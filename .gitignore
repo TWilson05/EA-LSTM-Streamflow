@@ -4,3 +4,4 @@
 /raw_streamflow_batch_data
 /station_metadata.csv
 /station_metadata_historical.csv
+*.csv
