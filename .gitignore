@@ -1,7 +1,11 @@
-/AB_station_list.csv
-/combined_streamflow.csv
-/combined_streamflow2.csv
-/raw_streamflow_batch_data
-/station_metadata.csv
-/station_metadata_historical.csv
 *.csv
+*.dbf
+*.prj
+*.shp
+*.shx
+*.cpg
+*.sbn
+*.sbx
+*.qpj
+*.xml
+*.qmd
