@@ -12,3 +12,5 @@
 *.nc
 *.grib
 *.idx
+*.keras
+*.pkl
