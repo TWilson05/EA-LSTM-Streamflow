@@ -33,7 +33,9 @@ def fetch_streamflow_batch(stations, start_year : int, end_year : int, output_fi
     df_long["Date"] = pd.to_datetime(df_long["Date"])
     
     # Pivot to wide format
+    requested_stations = sorted(list(set([s.strip() for s in stations])))
     df_wide = df_long.pivot(index="Date", columns=" ID", values="Value/Valeur")
+    df_wide = df_wide.reindex(columns=requested_stations)
 
     # save to csv
     if output_filename:
