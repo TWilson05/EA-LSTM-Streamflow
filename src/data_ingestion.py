@@ -61,7 +61,7 @@ def download_era5_precipitation(years, months=range(1, 13)):
             out_file = ERA5_PRECIP_DIR / f"era5_precip_{year}_{month:02d}.nc"
 
             if out_file.exists():
-                print(f"✔ Skipping {year}-{month:02d} (already exists)")
+                print(f"✔ Skipping Precip {year}-{month:02d} (already exists)")
                 continue
 
             days_in_month = calendar.monthrange(year, month)[1]
