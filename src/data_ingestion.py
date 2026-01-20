@@ -2,7 +2,6 @@ import cdsapi
 import calendar
 import urllib.parse
 import pandas as pd
-from pathlib import Path
 from src.config import RAW_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, ERA5_BOUNDS
 
 def build_wateroffice_url(stations, start_date : int, end_date : int, parameter="flow"):
