@@ -12,6 +12,7 @@ PROCESSED_DATA_DIR = DATA_DIR / "processed"
 ERA5_DIR = DATA_DIR / "raw" / "era5"
 ERA5_PRECIP_DIR = ERA5_DIR / "precipitation"
 ERA5_TEMP_DIR = ERA5_DIR / "temperature"
+CLIMATE_OUTPUT_DIR = PROCESSED_DATA_DIR / "climate"
 
 # Spatial Data Paths
 DRAINAGE_DIR = DATA_DIR / "raw" / "drainage_areas"
@@ -32,5 +33,5 @@ OUTPUT_GLACIER_VOL = PROCESSED_DATA_DIR / "glacier_volume_change.csv"
 ERA5_BOUNDS = [62, -129, 47, -105] 
 
 # Create directories if they don't exist
-for path in [DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR]:
+for path in [DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, CLIMATE_OUTPUT_DIR]:
     path.mkdir(parents=True, exist_ok=True)
