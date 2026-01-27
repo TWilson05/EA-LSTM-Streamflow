@@ -26,25 +26,28 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256):
     tmin = pd.read_csv(CLIMATE_OUTPUT_DIR / "daily_temp_min.csv", index_col=0, parse_dates=True)
     flow = pd.read_csv(PROCESSED_DATA_DIR / "filtered_streamflow.csv", index_col=0, parse_dates=True)
     
-    # Load Static
+    # Load Static Attributes
     static = pd.read_csv(PROCESSED_DATA_DIR / "static_attributes.csv", index_col=0)
+    
+    # Handle potentially different column names for Area
     if 'basin_area_km2' in static.columns:
         area_col = 'basin_area_km2'
     else:
         area_col = 'area_km2'
-    static = static[[area_col, 'glacier_pct']]
+        
+    # --- UPDATED: Select Area, Glacier %, and Mean Elevation ---
+    # We explicitly select these 3 features.
+    static = static[[area_col, 'glacier_pct', 'mean_elev']]
     
     # 2. ALIGNMENT FIX (Preserve 1979 Climate Data)
     print("   Aligning dates and stations...")
     
     # A. Stations: Intersection (We can only predict stations we have flow for)
-    # Note: We assume climate data covers these stations (it should if derived from shapefiles)
     common_stations = sorted(list(set(flow.columns).intersection(precip.columns)))
     print(f"   Common Stations: {len(common_stations)}")
 
     # B. Dates: Use CLIMATE as the Master Index
     # We want the full range of climate data (e.g., 1979-2022)
-    # Precip is usually the cleanest master index
     master_index = precip.index.sort_values()
     
     # Ensure all climate vars share this index
@@ -53,7 +56,6 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256):
     
     # CRITICAL: Reindex flow to master index.
     # 1979 dates will become NaN in 'flow', which is fine (we won't compute loss on them).
-    # But the rows will exist, keeping the array indices aligned.
     flow = flow.reindex(master_index)
     
     print(f"   Master Index Range: {master_index.min().date()} to {master_index.max().date()}")
@@ -79,6 +81,7 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256):
 
     # 6. Normalization (Fit on Train, Apply to All)
     print("   Normalizing features...")
+    # Dynamic: (Time, Stations, 3) -> [Precip, Tmax, Tmin]
     dyn_array = np.stack([precip.values, tmax.values, tmin.values], axis=2)
     
     train_slice = dyn_array[train_mask]
@@ -87,6 +90,7 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256):
     
     dyn_norm = (dyn_array - dyn_mean) / (dyn_std + 1e-6)
     
+    # Static: (Stations, 3) -> [Area, Glacier%, Elev]
     stat_vals = static.values
     stat_mean = np.nanmean(stat_vals, axis=0)
     stat_std = np.nanstd(stat_vals, axis=0)
