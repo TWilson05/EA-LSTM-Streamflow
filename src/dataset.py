@@ -4,154 +4,128 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from src.config import PROCESSED_DATA_DIR, CLIMATE_OUTPUT_DIR
 
-class StreamflowDataset(Dataset):
-    def __init__(self, X_dynamic, X_static, y, sequence_length=365):
-        self.X_dynamic = X_dynamic
-        self.X_static = X_static
-        self.y = y
-        self.sequence_length = sequence_length
-
+class LazyStreamflowDataset(Dataset):
+    def __init__(self, dyn_array, stat_array, y_array, time_indices, sequence_length=365):
+        """
+        Args:
+            dyn_array: (Total_Time, N_Stations, N_Dyn_Feats) - Normalized
+            stat_array: (N_Stations, N_Stat_Feats) - Normalized
+            y_array: (Total_Time, N_Stations) - Targets
+            time_indices: List of valid integer time indices 't' for prediction
+        """
+        self.dyn = dyn_array
+        self.stat = stat_array
+        self.y = y_array
+        self.time_indices = time_indices
+        self.seq_len = sequence_length
+        self.num_stations = dyn_array.shape[1]
+        
     def __len__(self):
-        return self.y.shape[0]
+        # Total samples = Number of valid days * Number of stations
+        return len(self.time_indices) * self.num_stations
 
     def __getitem__(self, idx):
-        return self.X_dynamic[idx], self.X_static[idx], self.y[idx]
+        # Map linear index to (time_index, station_index)
+        # Logic: We iterate through all stations for time t, then move to t+1
+        time_ptr = idx // self.num_stations
+        station_idx = idx % self.num_stations
+        
+        # Get the actual time index from the valid list
+        t = self.time_indices[time_ptr]
+        
+        # 1. Dynamic Window [t-365 : t] for specific station
+        # Slicing numpy arrays is "lazy" (view, not copy) until converted to tensor
+        x_dyn = self.dyn[t - self.seq_len : t, station_idx, :] 
+        
+        # 2. Static Features for specific station
+        x_stat = self.stat[station_idx]
+        
+        # 3. Target
+        y_val = self.y[t, station_idx]
+        
+        return (torch.from_numpy(x_dyn).float(), 
+                torch.from_numpy(x_stat).float(), 
+                torch.tensor([y_val]).float())
 
 def load_and_preprocess_data(sequence_length=365, batch_size=256):
-    print("⏳ Loading datasets...")
+    print("⏳ Loading datasets (Lazy Mode)...")
     
     # 1. Load Data
     precip = pd.read_csv(CLIMATE_OUTPUT_DIR / "daily_precipitation.csv", index_col=0, parse_dates=True)
     tmax = pd.read_csv(CLIMATE_OUTPUT_DIR / "daily_temp_max.csv", index_col=0, parse_dates=True)
     tmin = pd.read_csv(CLIMATE_OUTPUT_DIR / "daily_temp_min.csv", index_col=0, parse_dates=True)
     flow = pd.read_csv(PROCESSED_DATA_DIR / "filtered_streamflow.csv", index_col=0, parse_dates=True)
-    
-    # Load Static Attributes
     static = pd.read_csv(PROCESSED_DATA_DIR / "static_attributes.csv", index_col=0)
     
-    # Handle potentially different column names for Area
-    if 'basin_area_km2' in static.columns:
-        area_col = 'basin_area_km2'
-    else:
-        area_col = 'area_km2'
+    if 'basin_area_km2' in static.columns: area_col = 'basin_area_km2'
+    else: area_col = 'area_km2'
         
-    # --- UPDATED: Select Area, Glacier %, and Mean Elevation ---
-    # We explicitly select these 3 features.
+    # Select 3 Static Features
     static = static[[area_col, 'glacier_pct', 'mean_elev']]
     
-    # 2. ALIGNMENT FIX (Preserve 1979 Climate Data)
-    print("   Aligning dates and stations...")
-    
-    # A. Stations: Intersection (We can only predict stations we have flow for)
+    # 2. Align
     common_stations = sorted(list(set(flow.columns).intersection(precip.columns)))
-    print(f"   Common Stations: {len(common_stations)}")
-
-    # B. Dates: Use CLIMATE as the Master Index
-    # We want the full range of climate data (e.g., 1979-2022)
     master_index = precip.index.sort_values()
     
-    # Ensure all climate vars share this index
     tmax = tmax.reindex(master_index)
     tmin = tmin.reindex(master_index)
-    
-    # CRITICAL: Reindex flow to master index.
-    # 1979 dates will become NaN in 'flow', which is fine (we won't compute loss on them).
     flow = flow.reindex(master_index)
     
-    print(f"   Master Index Range: {master_index.min().date()} to {master_index.max().date()}")
-
-    # 3. Filter Columns (Stations)
+    # 3. Filter
     precip = precip[common_stations]
     tmax = tmax[common_stations]
     tmin = tmin[common_stations]
     flow = flow[common_stations]
     static = static.loc[common_stations]
     
-    # 4. Convert Flow to Specific Runoff (mm/day)
+    # 4. Calculate Runoff
     areas = static[area_col].values
     y_runoff = (flow * 86.4) / areas
     
-    # 5. Define Splits (Based on Years)
-    # Training: 1990-2012
-    train_mask = (master_index.year >= 1990) & (master_index.year <= 2012)
+    # 5. Normalization
+    print("   Normalizing features...")
+    # Keep as numpy arrays (float32 to save RAM)
+    dyn_array = np.stack([precip.values, tmax.values, tmin.values], axis=2).astype(np.float32)
     
-    # Testing: 1980-1989 OR 2013-2022
+    train_mask = (master_index.year >= 1990) & (master_index.year <= 2012)
     test_mask = ((master_index.year >= 1980) & (master_index.year <= 1989)) | \
                 ((master_index.year >= 2013) & (master_index.year <= 2022))
 
-    # 6. Normalization (Fit on Train, Apply to All)
-    print("   Normalizing features...")
-    # Dynamic: (Time, Stations, 3) -> [Precip, Tmax, Tmin]
-    dyn_array = np.stack([precip.values, tmax.values, tmin.values], axis=2)
-    
+    # Fit scaler on Train
     train_slice = dyn_array[train_mask]
     dyn_mean = np.nanmean(train_slice, axis=(0, 1))
     dyn_std = np.nanstd(train_slice, axis=(0, 1))
-    
     dyn_norm = (dyn_array - dyn_mean) / (dyn_std + 1e-6)
     
-    # Static: (Stations, 3) -> [Area, Glacier%, Elev]
-    stat_vals = static.values
+    # Static Norm
+    stat_vals = static.values.astype(np.float32)
     stat_mean = np.nanmean(stat_vals, axis=0)
     stat_std = np.nanstd(stat_vals, axis=0)
     stat_norm = (stat_vals - stat_mean) / (stat_std + 1e-6)
     
-    # 7. Sequence Generation
-    def create_sequences(date_mask):
-        X_dyn_list, X_stat_list, y_list = [], [], []
-        
-        # indices where date_mask is True (the days we want to PREDICT)
-        target_indices = np.where(date_mask)[0]
-        
-        # Filter: ensure we have enough history for the lookback
-        valid_indices = target_indices[target_indices >= sequence_length]
-        
-        if len(valid_indices) == 0:
-            print("   ⚠️ Warning: No valid sequences found for this split!")
-            return None
-        
-        print(f"   Processing {len(valid_indices)} time steps...")
-        
-        for t_idx in valid_indices:
-            # Lookback: indices [t-365 ... t-1]
-            # This allows us to use 1979 data (indices 0-364) to predict index 365 (Jan 1 1980)
-            window = dyn_norm[t_idx-sequence_length : t_idx] 
-            
-            # Target: index t
-            target = y_runoff.iloc[t_idx].values 
-            
-            # Transpose to (Stations, Seq_Len, Features)
-            window = window.transpose(1, 0, 2)
-            
-            # Replicate static features
-            stat = stat_norm
-            
-            X_dyn_list.append(window)
-            X_stat_list.append(stat)
-            y_list.append(target.reshape(-1, 1))
-            
-        X_dyn_all = np.concatenate(X_dyn_list, axis=0)
-        X_stat_all = np.concatenate(X_stat_list, axis=0)
-        y_all = np.concatenate(y_list, axis=0)
-        
-        return (torch.FloatTensor(X_dyn_all),
-                torch.FloatTensor(X_stat_all),
-                torch.FloatTensor(y_all))
+    # Targets
+    y_vals = y_runoff.values.astype(np.float32)
 
-    print("   Generating Training Sequences...")
-    train_data = create_sequences(train_mask)
-    
-    print("   Generating Testing Sequences...")
-    test_data = create_sequences(test_mask)
-    
-    if train_data is None or test_data is None:
-        raise ValueError("Sequence generation failed.")
+    # 6. Create Indices (No massive arrays created!)
+    def get_valid_indices(mask):
+        indices = np.where(mask)[0]
+        # Filter for lookback
+        return indices[indices >= sequence_length]
 
-    train_loader = DataLoader(StreamflowDataset(*train_data), batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(StreamflowDataset(*test_data), batch_size=batch_size, shuffle=False)
+    train_indices = get_valid_indices(train_mask)
+    test_indices = get_valid_indices(test_mask)
     
-    print(f"✅ Data Ready.")
-    print(f"   Train Samples: {len(train_loader.dataset)}")
-    print(f"   Test Samples:  {len(test_loader.dataset)}")
+    print(f"   Train Days: {len(train_indices)} | Test Days: {len(test_indices)}")
+    
+    # 7. Create Loaders
+    # num_workers=0 is safer for RAM in Colab. Increase to 2 or 4 if RAM allows.
+    train_ds = LazyStreamflowDataset(dyn_norm, stat_norm, y_vals, train_indices, sequence_length)
+    test_ds = LazyStreamflowDataset(dyn_norm, stat_norm, y_vals, test_indices, sequence_length)
+    
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    
+    print(f"✅ Data Ready (Lazy Loaded).")
+    print(f"   Train Samples: {len(train_ds)}")
     
     return train_loader, test_loader, common_stations
