@@ -4,7 +4,7 @@ import torch
 import json
 import os
 from torch.utils.data import Dataset, DataLoader
-from src.config import PROCESSED_DATA_DIR, CLIMATE_OUTPUT_DIR
+from src.config import PROCESSED_DATA_DIR, CLIMATE_OUTPUT_DIR, MODELS_DIR
 
 class LazyStreamflowDataset(Dataset):
     def __init__(self, dyn_array, stat_array, y_array, time_indices, sequence_length=365):
@@ -49,7 +49,7 @@ class LazyStreamflowDataset(Dataset):
                 torch.from_numpy(x_stat).float(), 
                 torch.tensor([y_val]).float())
 
-def load_and_preprocess_data(sequence_length=365, batch_size=256, scaler_path="models/scalers.json"):
+def load_and_preprocess_data(sequence_length=365, batch_size=256, scaler_path=(MODELS_DIR / "scalers.json")):
     print("⏳ Loading datasets...")
     
     # 1. Load Data
