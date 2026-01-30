@@ -1,5 +1,4 @@
 import pandas as pd
-from src.config import PROCESSED_DATA_DIR
 
 def filter_stations_by_annual_completeness(df, max_missing_pct=40.0):
     """

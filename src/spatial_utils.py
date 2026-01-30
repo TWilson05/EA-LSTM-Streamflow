@@ -1,6 +1,5 @@
 import geopandas as gpd
 import pandas as pd
-import numpy as np
 import warnings
 import os
 import requests
@@ -8,22 +7,16 @@ import zipfile
 import rasterio
 from rasterio.merge import merge
 from rasterstats import zonal_stats
-from tqdm import tqdm
-from src.config import OUTPUT_STATIC_ATTR, OUTPUT_GLACIER_VOL, RAW_DATA_DIR
+from src.config import OUTPUT_STATIC_ATTR, OUTPUT_GLACIER_VOL, RAW_DATA_DIR, ELEVATION_DIR
 
 # Standard Equal Area projection for Western Canada
 CANADA_ALBERS_CRS = "+proj=aea +lat_1=50 +lat_2=70 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs"
 
-def download_srtm_90m_tiles(bounds, cache_dir=None):
+def download_srtm_90m_tiles(bounds, cache_dir=ELEVATION_DIR):
     """
     Downloads SRTM 90m (v4.1) tiles from CGIAR-CSI server.
     Grid is 5x5 degrees. 
     """
-    # --- FIX: Use Config Path ---
-    if cache_dir is None:
-        cache_dir = RAW_DATA_DIR / "srtm_tiles"
-        
-    os.makedirs(cache_dir, exist_ok=True)
     
     minx, miny, maxx, maxy = bounds
     

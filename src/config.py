@@ -28,6 +28,9 @@ DRAINAGE_FILES = [
     DRAINAGE_DIR / "MDA_ADP_07.gpkg"
 ]
 
+# Elevation data files
+ELEVATION_DIR = RAW_DATA_DIR / "srtm_tiles"
+
 # Glacier data files
 GLACIER_SHP_PATH = RAW_DATA_DIR / "RGI-western-canada" / "02_rgi60_WesternCanadaUS.shp"
 MASS_BALANCE_PATH = RAW_DATA_DIR / "mass_balance" / "ts_monthly_const_area_fnn_cluster.csv"
@@ -38,5 +41,5 @@ OUTPUT_GLACIER_VOL = PROCESSED_DATA_DIR / "glacier_volume_change.csv"
 
 
 # Create directories if they don't exist
-for path in [DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, CLIMATE_OUTPUT_DIR]:
+for path in [DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, CLIMATE_OUTPUT_DIR, ELEVATION_DIR]:
     path.mkdir(parents=True, exist_ok=True)
