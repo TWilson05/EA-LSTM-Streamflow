@@ -21,3 +21,4 @@ __pycache__
 *.tif
 data
 project_upload
+*.pth

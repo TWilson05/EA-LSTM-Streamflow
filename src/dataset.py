@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import torch
+import json
+import os
 from torch.utils.data import Dataset, DataLoader
 from src.config import PROCESSED_DATA_DIR, CLIMATE_OUTPUT_DIR
 
@@ -47,8 +49,8 @@ class LazyStreamflowDataset(Dataset):
                 torch.from_numpy(x_stat).float(), 
                 torch.tensor([y_val]).float())
 
-def load_and_preprocess_data(sequence_length=365, batch_size=256):
-    print("⏳ Loading datasets (Lazy Mode)...")
+def load_and_preprocess_data(sequence_length=365, batch_size=256, scaler_path="models/scalers.json"):
+    print("⏳ Loading datasets...")
     
     # 1. Load Data
     precip = pd.read_csv(CLIMATE_OUTPUT_DIR / "daily_precipitation.csv", index_col=0, parse_dates=True)
@@ -57,8 +59,7 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256):
     flow = pd.read_csv(PROCESSED_DATA_DIR / "filtered_streamflow.csv", index_col=0, parse_dates=True)
     static = pd.read_csv(PROCESSED_DATA_DIR / "static_attributes.csv", index_col=0)
     
-    if 'basin_area_km2' in static.columns: area_col = 'basin_area_km2'
-    else: area_col = 'area_km2'
+    area_col = 'basin_area_km2'
         
     # Select 3 Static Features
     static = static[[area_col, 'glacier_pct', 'mean_elev']]
@@ -78,7 +79,8 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256):
     flow = flow[common_stations]
     static = static.loc[common_stations]
     
-    # 4. Calculate Runoff
+    # 4. Convert Flow to Specific Runoff (mm/day)
+    # This divides m^3/s by Area (km^2), converting it to intrinsic mm/day
     areas = static[area_col].values
     y_runoff = (flow * 86.4) / areas
     
@@ -93,20 +95,34 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256):
 
     # Fit scaler on Train
     train_slice = dyn_array[train_mask]
+    
+    # Compute stats
     dyn_mean = np.nanmean(train_slice, axis=(0, 1))
     dyn_std = np.nanstd(train_slice, axis=(0, 1))
-    dyn_norm = (dyn_array - dyn_mean) / (dyn_std + 1e-6)
     
-    # Static Norm
     stat_vals = static.values.astype(np.float32)
     stat_mean = np.nanmean(stat_vals, axis=0)
     stat_std = np.nanstd(stat_vals, axis=0)
-    stat_norm = (stat_vals - stat_mean) / (stat_std + 1e-6)
     
-    # Targets
+    # --- SAVE SCALERS ---
+    os.makedirs(os.path.dirname(scaler_path), exist_ok=True)
+    scalers = {
+        "dyn_mean": dyn_mean.tolist(),
+        "dyn_std": dyn_std.tolist(),
+        "stat_mean": stat_mean.tolist(),
+        "stat_std": stat_std.tolist(),
+        "static_features": [area_col, 'glacier_pct', 'mean_elev'] # Save feature names too
+    }
+    with open(scaler_path, "w") as f:
+        json.dump(scalers, f)
+    print(f"   ✅ Saved normalization scalers to {scaler_path}")
+    
+    # Apply Normalization
+    dyn_norm = (dyn_array - dyn_mean) / (dyn_std + 1e-6)
+    stat_norm = (stat_vals - stat_mean) / (stat_std + 1e-6)
     y_vals = y_runoff.values.astype(np.float32)
 
-    # 6. Create Indices (No massive arrays created!)
+    # 6. Create Indices
     def get_valid_indices(mask):
         indices = np.where(mask)[0]
         # Filter for lookback
@@ -125,7 +141,7 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256):
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
     
-    print(f"✅ Data Ready (Lazy Loaded).")
+    print(f"✅ Data Ready.")
     print(f"   Train Samples: {len(train_ds)}")
     
     return train_loader, test_loader, common_stations
