@@ -49,7 +49,7 @@ class LazyStreamflowDataset(Dataset):
                 torch.from_numpy(x_stat).float(), 
                 torch.tensor([y_val]).float())
 
-def load_and_preprocess_data(sequence_length=365, batch_size=256, scaler_path=(MODELS_DIR / "scalers.json")):
+def load_and_preprocess_data(sequence_length=365, batch_size=256, num_workers=0, scaler_path=(MODELS_DIR / "scalers.json")):
     print("⏳ Loading datasets...")
     
     # 1. Load Data
@@ -123,6 +123,8 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256, scaler_path=(M
     y_vals = y_runoff.values.astype(np.float32)
 
     # 6. Create Indices
+    # used for train/test split as well as making sure indexes only start at the specified year
+    # while maintaining input data that predates that.
     def get_valid_indices(mask):
         indices = np.where(mask)[0]
         # Filter for lookback
@@ -138,8 +140,8 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256, scaler_path=(M
     train_ds = LazyStreamflowDataset(dyn_norm, stat_norm, y_vals, train_indices, sequence_length)
     test_ds = LazyStreamflowDataset(dyn_norm, stat_norm, y_vals, test_indices, sequence_length)
     
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     
     print(f"✅ Data Ready.")
     print(f"   Train Samples: {len(train_ds)}")
