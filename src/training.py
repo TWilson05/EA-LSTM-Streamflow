@@ -2,49 +2,51 @@ import torch
 import numpy as np
 from tqdm import tqdm
 
-class NSELoss(torch.nn.Module):
+class BasinAveragedNSELoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, y_pred, y_true):
-        # Mask: Create a boolean mask where y_true is NOT nan
+    def forward(self, y_pred, y_true, q_std):
+        """
+        y_pred: (Batch, 1)
+        y_true: (Batch, 1)
+        q_std:  (Batch, 1) - Pre-computed observation std for each basin in batch
+        """
+        # Mask NaNs
         mask = ~torch.isnan(y_true)
-        
-        # Apply mask
+        if mask.sum() == 0:
+            return torch.tensor(0.0, requires_grad=True).to(y_pred.device)
+            
         pred = y_pred[mask]
         true = y_true[mask]
+        std = q_std[mask]
         
-        if len(true) == 0:
-            return torch.tensor(0.0, requires_grad=True).to(y_pred.device)
+        # Basin-Averaged NSE* Loss Formula:
+        # Loss = Sum( (y_hat - y)^2 / (std + eps)^2 )
+        # We perform element-wise division by the specific basin variance
         
-        # NSE Calculation
-        # Numerator: Sum of Squared Errors
-        numerator = torch.sum((true - pred) ** 2)
+        squared_error = (pred - true) ** 2
+        variance = (std + 1e-6) ** 2
         
-        # Denominator: Sum of Squared differences from mean
-        true_mean = torch.mean(true)
-        denominator = torch.sum((true - true_mean) ** 2)
+        normalized_squared_error = squared_error / variance
         
-        # Add epsilon to avoid div by zero
-        nse = 1 - (numerator / (denominator + 1e-6))
-        
-        # Loss is 1 - NSE (so we minimize loss to maximize NSE)
-        # Note: If NSE is negative (model worse than mean), loss > 1. 
-        # Range of NSE is (-inf, 1]. Range of Loss is [0, inf).
-        return numerator / (denominator + 1e-6)
+        # Return the mean over the batch
+        return torch.mean(normalized_squared_error)
 
 def train_epoch(model, loader, optimizer, device):
     model.train()
     total_loss = 0
-    criterion = NSELoss()
+    criterion = BasinAveragedNSELoss()
     
-    for x_dyn, x_stat, y in tqdm(loader, desc="Training"):
-        x_dyn, x_stat, y = x_dyn.to(device), x_stat.to(device), y.to(device)
+    # Unpack 4 items now (including q_std)
+    for x_dyn, x_stat, y, q_std in tqdm(loader, desc="Training"):
+        x_dyn, x_stat, y, q_std = x_dyn.to(device), x_stat.to(device), y.to(device), q_std.to(device)
         
         optimizer.zero_grad()
         y_pred = model(x_dyn, x_stat)
         
-        loss = criterion(y_pred, y)
+        # Pass q_std to loss
+        loss = criterion(y_pred, y, q_std)
         loss.backward()
         optimizer.step()
         
@@ -53,22 +55,26 @@ def train_epoch(model, loader, optimizer, device):
     return total_loss / len(loader)
 
 def evaluate(model, loader, device):
+    """
+    Evaluates on Validation/Test set. 
+    Returns average NSE (not loss) across the set.
+    """
     model.eval()
     total_nse = 0
     count = 0
     
     with torch.no_grad():
-        for x_dyn, x_stat, y in loader:
+        for x_dyn, x_stat, y, _ in loader: # Ignore q_std for reporting standard NSE
             x_dyn, x_stat, y = x_dyn.to(device), x_stat.to(device), y.to(device)
             y_pred = model(x_dyn, x_stat)
             
-            # Helper to calculate actual NSE for reporting
             mask = ~torch.isnan(y)
             if mask.sum() == 0: continue
             
             p = y_pred[mask]
             t = y[mask]
             
+            # Standard NSE Calculation for reporting
             num = torch.sum((t - p)**2)
             den = torch.sum((t - t.mean())**2)
             nse = 1 - (num / (den + 1e-6))
