@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 from tqdm import tqdm
 
 class BasinAveragedNSELoss(torch.nn.Module):
@@ -21,10 +20,7 @@ class BasinAveragedNSELoss(torch.nn.Module):
         true = y_true[mask]
         std = q_std[mask]
         
-        # Basin-Averaged NSE* Loss Formula:
-        # Loss = Sum( (y_hat - y)^2 / (std + eps)^2 )
-        # We perform element-wise division by the specific basin variance
-        
+        # Basin-Averaged NSE* Loss:
         squared_error = (pred - true) ** 2
         variance = (std + 1e-6) ** 2
         
@@ -35,24 +31,43 @@ class BasinAveragedNSELoss(torch.nn.Module):
 
 def train_epoch(model, loader, optimizer, device):
     model.train()
-    total_loss = 0
+    
+    total_accumulated_loss = 0.0  # Sum of (Batch_Loss * Num_Valid_Samples)
+    total_valid_samples = 0       # Sum of Num_Valid_Samples
+    
     criterion = BasinAveragedNSELoss()
     
-    # Unpack 4 items now (including q_std)
     for x_dyn, x_stat, y, q_std in tqdm(loader, desc="Training"):
         x_dyn, x_stat, y, q_std = x_dyn.to(device), x_stat.to(device), y.to(device), q_std.to(device)
         
+        # 1. Calculate Mask & Count Valid Samples
+        # We need this count to weigh the batch correctly
+        mask = ~torch.isnan(y)
+        num_valid = mask.sum().item()
+        
+        # Skip batch if no valid data to avoid messing up gradients
+        if num_valid == 0:
+            continue
+            
         optimizer.zero_grad()
         y_pred = model(x_dyn, x_stat)
         
-        # Pass q_std to loss
+        # 2. Compute Loss (This returns the Mean of the batch)
         loss = criterion(y_pred, y, q_std)
         loss.backward()
         optimizer.step()
         
-        total_loss += loss.item()
+        # 3. Accumulate Weighted Loss
+        # We multiply by num_valid to "undo" the mean inside the loss function
+        # giving us the total Sum of Errors for this batch
+        total_accumulated_loss += loss.item() * num_valid
+        total_valid_samples += num_valid
         
-    return total_loss / len(loader)
+    # 4. Compute Global Average
+    if total_valid_samples > 0:
+        return total_accumulated_loss / total_valid_samples
+    else:
+        return 0.0
 
 def evaluate(model, loader, device):
     """
