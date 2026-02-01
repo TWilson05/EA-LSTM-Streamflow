@@ -7,7 +7,7 @@ def bundle_project(output_name="project_upload.zip"):
     include_paths = [
         Path("src"),
         Path("data/processed"),
-        Path("hpc"),  # If you put your job.sh here
+        Path("hpc")
     ]
     include_files = [
         "requirements.txt",
