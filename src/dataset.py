@@ -48,7 +48,12 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256, num_workers=0)
     basin_stds = np.nanstd(y_vals[train_mask], axis=0)
     basin_stds[basin_stds < 1e-4] = 1.0
     
-    scalers = compute_and_save_scalers(train_dyn, stat_vals, basin_stds, MODELS_DIR / "scalers.json")
+    static_feature_names = ['area_km2', 'glacier_pct', 'mean_elev']
+    scalers = compute_and_save_scalers(train_dyn,
+                                       stat_vals,
+                                       basin_stds,
+                                       MODELS_DIR / "scalers.json",
+                                       static_feature_names)
     
     # Apply Normalization
     dyn_norm = normalize(dyn_array, scalers['dyn_mean'], scalers['dyn_std'])

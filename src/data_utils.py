@@ -39,14 +39,15 @@ def calculate_runoff(flow_m3s, areas_km2):
     """Converts Flow (m^3/s) -> Specific Runoff (mm/day)."""
     return (flow_m3s * 86.4) / areas_km2
 
-def compute_and_save_scalers(dyn_array, stat_array, basin_stds, scaler_path):
+def compute_and_save_scalers(dyn_array, stat_array, basin_stds, scaler_path, static_feature_names):
     """Computes mean/std and saves to JSON."""
     scalers = {
         "dyn_mean": np.nanmean(dyn_array, axis=(0, 1)).tolist(),
         "dyn_std": np.nanstd(dyn_array, axis=(0, 1)).tolist(),
         "stat_mean": np.nanmean(stat_array, axis=0).tolist(),
         "stat_std": np.nanstd(stat_array, axis=0).tolist(),
-        "basin_stds": basin_stds.tolist()
+        "basin_stds": basin_stds.tolist(),
+        "static_features": static_feature_names
     }
     os.makedirs(os.path.dirname(scaler_path), exist_ok=True)
     with open(scaler_path, "w") as f:
