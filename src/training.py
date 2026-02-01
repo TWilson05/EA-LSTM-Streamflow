@@ -71,30 +71,37 @@ def train_epoch(model, loader, optimizer, device):
 
 def evaluate(model, loader, device):
     """
-    Evaluates on Validation/Test set. 
-    Returns average NSE (not loss) across the set.
+    Calculates the Basin-Averaged NSE Loss on the validation/test set.
+    Returns: Weighted Average Loss (Lower is Better)
     """
     model.eval()
-    total_nse = 0
-    count = 0
+    total_accumulated_loss = 0.0
+    total_valid_samples = 0
+    
+    criterion = BasinAveragedNSELoss()
     
     with torch.no_grad():
-        for x_dyn, x_stat, y, _ in loader: # Ignore q_std for reporting standard NSE
-            x_dyn, x_stat, y = x_dyn.to(device), x_stat.to(device), y.to(device)
+        # We need q_std here for the loss calculation
+        for x_dyn, x_stat, y, q_std in loader:
+            x_dyn, x_stat, y, q_std = x_dyn.to(device), x_stat.to(device), y.to(device), q_std.to(device)
+            
+            # 1. Mask & Count
+            mask = ~torch.isnan(y)
+            num_valid = mask.sum().item()
+            
+            if num_valid == 0: continue
+            
+            # 2. Predict
             y_pred = model(x_dyn, x_stat)
             
-            mask = ~torch.isnan(y)
-            if mask.sum() == 0: continue
+            # 3. Compute Loss
+            loss = criterion(y_pred, y, q_std)
             
-            p = y_pred[mask]
-            t = y[mask]
+            # 4. Accumulate Weighted
+            total_accumulated_loss += loss.item() * num_valid
+            total_valid_samples += num_valid
             
-            # Standard NSE Calculation for reporting
-            num = torch.sum((t - p)**2)
-            den = torch.sum((t - t.mean())**2)
-            nse = 1 - (num / (den + 1e-6))
-            
-            total_nse += nse.item()
-            count += 1
-            
-    return total_nse / count if count > 0 else 0
+    if total_valid_samples > 0:
+        return total_accumulated_loss / total_valid_samples
+    else:
+        return 0.0
