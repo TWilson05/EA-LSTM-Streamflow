@@ -9,7 +9,7 @@ from src.config import MODELS_DIR, OUTPUT_DATA_DIR
 def main():
     # 1. Configuration
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    EPOCHS = 30
+    EPOCHS = 50
     HIDDEN_DIM = 256
     LEARNING_RATE = 1e-3
     BATCH_SIZE = 512
