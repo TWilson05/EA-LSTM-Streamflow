@@ -7,7 +7,7 @@ torch
 # preprocessing specific requirements
 xarray
 geopandas
-shapely.geometry
+shapely
 cdsapi
 requests
 rasterio
