@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import box
-from pathlib import Path
 from tqdm import tqdm
 from src.config import CLIMATE_OUTPUT_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR
 import warnings
@@ -183,32 +182,6 @@ def process_hourly_temp(files, weights_map):
                 # Local Time Adjustment
                 times = times - pd.Timedelta(hours=7)
                 
-                # Pre-allocate array for speed: (Time, Stations)
-                n_times = len(times)
-                stations = list(weights_map.keys())
-                n_stations = len(stations)
-                
-                # (Time x Stations) matrix
-                temp_matrix = np.zeros((n_times, n_stations))
-                
-                # Fill matrix - iterating stations is faster than iterating rows if w_dict is small
-                for s_idx, station in enumerate(stations):
-                    w_dict = weights_map[station]
-                    # Extract weighted sum for this station across ALL times at once?
-                    # Hard with irregular weights. Standard loop is safest for irregular grid.
-                    # Optimization: Iterate times, then stations.
-                    pass
-
-                # --- Optimized Inner Loop ---
-                # Instead of appending dicts to a list (slow), let's use numpy
-                
-                file_dates = times.date 
-                unique_dates = np.unique(file_dates)
-                
-                # We need to compute station values for each timestep
-                # To speed this up, we can pre-calculate the indices/weights arrays for dot product?
-                # For now, let's just stick to the robust loop but clean it up.
-                
                 file_records = []
                 for t_idx, time in enumerate(times):
                     if data.ndim == 3:
@@ -296,19 +269,17 @@ def process_era5_basin_data(basin_gpkg_list, stations_list):
     print("\nStep 3/4: Processing Precipitation...")
     df_precip = process_daily_precip(precip_files, weights)
     df_precip.to_csv(CLIMATE_OUTPUT_DIR / "daily_precipitation.csv")
+    print(f"Precipitation data saved to {CLIMATE_OUTPUT_DIR / "daily_precipitation.csv"}.")
     
     # 4. Process Temp
     print("\nStep 4/4: Processing Temperature...")
     temp_files = sorted(list(ERA5_TEMP_DIR.glob("*.grib")) + list(ERA5_TEMP_DIR.glob("*.grib2")))
     
     if temp_files:
-        # Note: Only min and max returned now
         df_min, df_max = process_hourly_temp(temp_files, weights)
         
         if df_min is not None:
             df_min.to_csv(CLIMATE_OUTPUT_DIR / "daily_temp_min.csv")
             df_max.to_csv(CLIMATE_OUTPUT_DIR / "daily_temp_max.csv")
+            print(f"Temperature data saved to {CLIMATE_OUTPUT_DIR}.")
             print("✅ Climate processing complete.")
-            return df_precip, df_max # Returning Max instead of Mean just to return something
-            
-    return df_precip, None
