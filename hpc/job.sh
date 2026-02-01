@@ -24,7 +24,8 @@
 # 1. Setup Environment
 echo "Setting up job environment on $(hostname)..."
 module purge
-module load python/3.10.10
+module load intel-oneapi-compilers/2023.1.0
+module load python/3.11.6
 source venv/bin/activate
 
 # 2. Debug Info (Optional but helpful)

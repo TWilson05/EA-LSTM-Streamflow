@@ -8,7 +8,8 @@ echo "Starting Environment Setup..."
 # 1. Load System Modules (Sockeye-specific)
 # We purge old modules to ensure a clean slate
 module purge
-module load python/3.10.10
+module load intel-oneapi-compilers/2023.1.0
+module load python/3.11.6
 # If you need geospatial libs that require system binaries, load them here too
 # e.g., module load gdal/3.5.3 (Only if pip install fails later)
 
