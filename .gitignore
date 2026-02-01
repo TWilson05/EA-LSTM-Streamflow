@@ -1,16 +1,24 @@
+# tabular data files
 *.csv
+# geospatial data files
+*.gpkg
 *.dbf
 *.prj
 *.shp
 *.shx
-*.cpg
-*.sbn
-*.sbx
-*.qpj
-*.xml
-*.qmd
+# gridded data products
 *.nc
 *.grib
 *.idx
-*.keras
-*.pkl
+*.tif
+# packages
+*.zip
+# model saving
+*.pth
+*.json
+# python related files
+__pycache__
+*.egg-info
+venv
+# environment files
+*.env
