@@ -5,7 +5,9 @@ from tqdm import tqdm
 from src.config import MODELS_DIR
 from src.data_utils import load_raw_csvs, align_and_filter, load_scalers, normalize
 
-def predict_and_save_test_results(model, device, output_file, sequence_length=365, batch_size=256):
+SEQUENCE_LENGTH = 365
+
+def predict_and_save_test_results(model, device, output_file, batch_size=256):
     """
     Generates predictions for the test set and saves them to a CSV.
     Rows: Dates, Columns: Station IDs.
@@ -14,7 +16,7 @@ def predict_and_save_test_results(model, device, output_file, sequence_length=36
     
     # 1. Load and Align Data (Reusing shared logic)
     # Note: We pass 'p' (precip) as dummy flow because we don't need actual flow targets for inference
-    p, tmax, tmin, flow, static_df = load_raw_csvs()
+    p, tmax, tmin, _, static_df = load_raw_csvs()
     p, tmax, tmin, _, static_df, stations, master_index = align_and_filter(p, tmax, tmin, p, static_df)
     
     # 2. Load Scalers
@@ -43,7 +45,7 @@ def predict_and_save_test_results(model, device, output_file, sequence_length=36
     test_indices = all_indices[test_mask]
     
     # Filter for lookback (cannot predict if t < sequence_length)
-    valid_test_indices = test_indices[test_indices >= sequence_length]
+    valid_test_indices = test_indices[test_indices >= SEQUENCE_LENGTH]
     valid_test_dates = master_index[valid_test_indices]
     
     print(f"   Predicting for {len(stations)} stations over {len(valid_test_dates)} days...")
@@ -73,7 +75,7 @@ def predict_and_save_test_results(model, device, output_file, sequence_length=36
             windows = []
             for t in batch_indices:
                 # Extract [t-365 : t] for station i
-                windows.append(dyn_norm[t-sequence_length : t, i, :])
+                windows.append(dyn_norm[t-SEQUENCE_LENGTH : t, i, :])
             
             # Convert to Tensor
             dyn_batch = torch.tensor(np.array(windows)).float().to(device)
