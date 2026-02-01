@@ -13,7 +13,8 @@ def bundle_project(output_name="project_upload.zip"):
         "requirements.txt",
         "run_training.py",
         "setup.py",
-        "README.md"
+        "README.md",
+        "secrets.env"
     ]
     
     # Exclusion pattern (specifically for the raw data)
