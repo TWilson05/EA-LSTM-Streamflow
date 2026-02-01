@@ -7,8 +7,4 @@ This pipeline requires a significant amount of data and preprocessing. The downl
 To train the EA-LSTM model, this project utilized UBC ARC Sockeye. The following steps can be followed to set up this project on Sockeye:
 
 1. **Extract project to a zip file**
-   Run the following script in your terminal in your root directory: `zip -r project.zip . \
-    -x "data/raw/*" \
-    -x "**/__pycache__/*" \
-    -x "*.egg-info/*" \
-    -x "*.pyc"`
+   Run the following script in your terminal in your root directory: `python bundle_project.py` to create a zip file for the project.
