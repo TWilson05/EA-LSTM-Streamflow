@@ -13,6 +13,7 @@ def main():
     HIDDEN_DIM = 256
     LEARNING_RATE = 1e-3
     BATCH_SIZE = 512
+    NUM_WORKERS = 4
 
     print(f"🚀 Job started on {DEVICE}")
 
@@ -20,7 +21,7 @@ def main():
     train_loader, val_loader, test_loader, stations = load_and_preprocess_data(
         sequence_length=365,
         batch_size=BATCH_SIZE,
-        num_workers=4)
+        num_workers=NUM_WORKERS)
 
     # 3. Initialize Model
     # Dynamic Features: Precip, Tmax, Tmin (3)
