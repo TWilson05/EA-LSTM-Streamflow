@@ -19,3 +19,5 @@
 # python related files
 __pycache__
 *.egg-info
+# environment files
+*.env
