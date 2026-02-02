@@ -23,8 +23,9 @@ To train the EA-LSTM model, this project utilized UBC ARC Sockeye. The following
    ```
    # secrets.env
    EMAIL="<your email>"
-   ACCOUNT="<alloc-code>"
+   ACCOUNT="<alloc-code>-gpu"
    ```
+   Note: The -gpu suffix is required for running in a GPU environment.
 2. **Bundle the Project**
    Run the bundle script, `python bundle_project.py`, in your terminal from the project root. This creates a zip file excluding the raw data.
 3. **Upload to Sockeye**

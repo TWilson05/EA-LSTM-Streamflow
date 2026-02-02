@@ -13,7 +13,7 @@ def main():
     HIDDEN_DIM = 256
     LEARNING_RATE = 1e-3
     BATCH_SIZE = 512
-    NUM_WORKERS = 8
+    NUM_WORKERS = 4
 
     print(f"🚀 Job started on {DEVICE}")
 

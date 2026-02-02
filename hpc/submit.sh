@@ -3,6 +3,8 @@ set -e
 
 # 1. Load Secrets
 if [ -f "secrets.env" ]; then
+    # Silent fix: Remove \r characters if they exist
+    sed -i 's/\r//' secrets.env
     source secrets.env
 else
     echo "Error: secrets.env not found!"
