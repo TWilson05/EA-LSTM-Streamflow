@@ -52,9 +52,19 @@ To train the EA-LSTM model, this project utilized UBC ARC Sockeye. The following
    ./hpc/submit.sh
    ```
 
-## Monitoring and Results
+### Monitoring and Results
 * **Check Status:** Run `squeue -u <cwl>` to see your job in the queue.
 * **View Logs:** Once running, track progress live: `tail -f logs/train_*.out`
 * **Retrieve Results:** After training, download the predictions to your local machine:
-  ```scp <cwl>@sockeye.arc.ubc.ca:/scratch/<alloc-code>/ealstm_project/data/processed/test_set_predictions.csv ./data/processed/```
-   
+  ```
+  scp <cwl>@sockeye.arc.ubc.ca:/scratch/<alloc-code>/ealstm_project/data/processed/test_set_predictions.csv ./data/processed/
+  ```
+7. **Retrieving Results**
+   Once the job status has changed to `COMPLETED`, you can download the trained model and predictions to your local machine.
+   The following code will download the necessary files produced.
+   ```bash
+   # download test set predictions
+   scp <cwl>@sockeye.arc.ubc.ca:/scratch/<alloc-code>/ealstm_project/data/output/test_set_predictions.csv ./data/output/
+   # download saved model
+   scp -r <cwl>@sockeye.arc.ubc.ca:/scratch/<alloc-code>/ealstm_project/models/ ./
+   ```
