@@ -1,5 +1,6 @@
 # tabular data files
 *.csv
+*.txt
 # geospatial data files
 *.gpkg
 *.dbf
