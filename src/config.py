@@ -26,11 +26,12 @@ ERA5_BOUNDS = [62, -129, 47, -105]
 DRAINAGE_DIR = RAW_DATA_DIR / "drainage_areas"
 DRAINAGE_FILES = [
     DRAINAGE_DIR / "MDA_ADP_05.gpkg",
-    DRAINAGE_DIR / "MDA_ADP_07.gpkg"
+    DRAINAGE_DIR / "MDA_ADP_07.gpkg",
+    DRAINAGE_DIR / "MDA_ADP_08.gpkg"
 ]
 
 # Elevation data files
-ELEVATION_DIR = RAW_DATA_DIR / "srtm_tiles"
+ELEVATION_DIR = RAW_DATA_DIR / "dem_data"
 
 # Glacier data files
 GLACIER_SHP_PATH = RAW_DATA_DIR / "RGI-western-canada" / "02_rgi60_WesternCanadaUS.shp"

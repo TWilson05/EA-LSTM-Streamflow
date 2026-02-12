@@ -1,8 +1,12 @@
+import math
 import cdsapi
 import calendar
+import requests
+import rasterio
 import urllib.parse
 import pandas as pd
-from src.config import RAW_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, ERA5_BOUNDS
+from rasterio.merge import merge
+from src.config import RAW_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, ERA5_BOUNDS, ELEVATION_DIR
 
 def build_wateroffice_url(stations, start_date : int, end_date : int, parameter="flow"):
     base = "https://wateroffice.ec.gc.ca/services/daily_data/csv/inline?"
@@ -113,3 +117,100 @@ def download_era5_temperature(years):
             client.retrieve(dataset, request, str(out_file))
         except Exception as e:
             print(f"❌ Failed Temp {year}: {e}")
+
+def latlon_to_tile(lat, lon, zoom):
+    """Converts Lat/Lon to Web Mercator XYZ tile coordinates."""
+    lat_rad = math.radians(lat)
+    n = 2.0 ** zoom
+    xtile = int((lon + 180.0) / 360.0 * n)
+    ytile = int((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
+    return xtile, ytile
+
+def download_aws_dem(bounds, output_filename="western_canada_dem.tif", zoom=10):
+    """
+    Downloads AWS Terrain Tiles for the given bounds and merges them.
+    Zoom 10 ~= 90m resolution (SRTM equivalent).
+    """
+    output_path = ELEVATION_DIR / output_filename
+    
+    # If already exists, skip
+    if output_path.exists():
+        print(f"ℹ️ DEM already exists at {output_path}. Skipping download.")
+        return output_path
+
+    print(f"⏳ Downloading DEM tiles for bounds: {bounds}...")
+    
+    # Parse bounds dictionary
+    min_lat, max_lat = bounds['south'], bounds['north']
+    min_lon, max_lon = bounds['west'], bounds['east']
+    
+    # Get Tile Ranges
+    # Note: Y-tile origin is North, so max_lat -> min_y_tile
+    x_min, y_min = latlon_to_tile(max_lat, min_lon, zoom)
+    x_max, y_max = latlon_to_tile(min_lat, max_lon, zoom)
+    
+    total_tiles = (x_max - x_min + 1) * (y_max - y_min + 1)
+    print(f"   Grid: X[{x_min}-{x_max}] Y[{y_min}-{y_max}] ({total_tiles} tiles)")
+    
+    src_files = []
+    
+    # Temp dir for individual tiles
+    tile_dir = ELEVATION_DIR / "tiles"
+    tile_dir.mkdir(exist_ok=True)
+    
+    count = 0
+    for x in range(x_min, x_max + 1):
+        for y in range(y_min, y_max + 1):
+            count += 1
+            url = f"https://s3.amazonaws.com/elevation-tiles-prod/geotiff/{zoom}/{x}/{y}.tif"
+            tile_path = tile_dir / f"tile_z{zoom}_x{x}_y{y}.tif"
+            
+            # Download
+            if not tile_path.exists():
+                try:
+                    r = requests.get(url, stream=True, timeout=30)
+                    if r.status_code == 200:
+                        with open(tile_path, 'wb') as f:
+                            for chunk in r.iter_content(8192): f.write(chunk)
+                    else:
+                        print(f"   ❌ Failed: {url} ({r.status_code})")
+                        continue
+                except Exception as e:
+                    print(f"   ❌ Error downloading tile {x},{y}: {e}")
+                    continue
+            
+            # Open
+            try:
+                src = rasterio.open(tile_path)
+                src_files.append(src)
+            except:
+                print(f"   ⚠️ Warning: Corrupt tile {x},{y}")
+                
+            if count % 10 == 0:
+                print(f"   Progress: {count}/{total_tiles}...", end="\r")
+                
+    print("\n🧩 Merging tiles...")
+    
+    if not src_files:
+        raise RuntimeError("❌ No tiles were downloaded successfully.")
+
+    mosaic, out_trans = merge(src_files)
+    
+    # Update Meta (EPSG:3857 for AWS Tiles)
+    out_meta = src_files[0].meta.copy()
+    out_meta.update({
+        "driver": "GTiff",
+        "height": mosaic.shape[1],
+        "width": mosaic.shape[2],
+        "transform": out_trans,
+        "crs": "EPSG:3857"
+    })
+    
+    with rasterio.open(output_path, "w", **out_meta) as dest:
+        dest.write(mosaic)
+        
+    # Cleanup handles
+    for src in src_files: src.close()
+    
+    print(f"✅ Saved merged DEM to {output_path}")
+    return output_path

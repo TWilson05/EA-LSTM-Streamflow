@@ -1,4 +1,8 @@
+import math
+import warnings
 import pandas as pd
+import geopandas as gpd
+from src.config import RAW_DATA_DIR, DRAINAGE_FILES
 
 def filter_stations_by_annual_completeness(df, max_missing_pct=40.0):
     """
@@ -43,3 +47,62 @@ def filter_stations_by_mda(df, mda_codes=["05", "07"]):
     print(f" - Dropping {len(dropped_stations)} stations (wrong region).")
     
     return df[valid_stations]
+
+def compute_and_save_bounds(stations_list=None):
+    """
+    1. Loads all basin shapefiles.
+    2. Filters for the requested stations (if provided).
+    3. Computes the total bounding box (North, South, East, West).
+    4. Saves these bounds to a CSV for ERA5 and DEM scripts to use.
+    """
+    print("⏳ Computing spatial bounds from basin files...")
+    
+    basins_list = []
+    for path in DRAINAGE_FILES:
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=RuntimeWarning)
+                # Flexible layer reading
+                gdf = gpd.read_file(path, layer='DrainageBasin_BassinDeDrainage')
+            
+            # Normalize ID column
+            id_col = next((c for c in gdf.columns if c.lower() in ['stationnum', 'id', 'station_id']), None)
+            if id_col:
+                gdf = gdf[[id_col, 'geometry']].rename(columns={id_col: 'station_id'})
+                basins_list.append(gdf)
+        except Exception as e:
+            print(f"⚠️ Warning: Could not load {path.name}: {e}")
+
+    if not basins_list:
+        raise ValueError("❌ No basin files loaded. Check DRAINAGE_FILES in config.")
+
+    gdf_all = pd.concat(basins_list, ignore_index=True)
+    
+    # Filter if specific stations requested
+    if stations_list:
+        gdf_all['station_id'] = gdf_all['station_id'].astype(str).str.strip()
+        requested = set([s.strip() for s in stations_list])
+        gdf_all = gdf_all[gdf_all['station_id'].isin(requested)]
+
+    if gdf_all.empty:
+        raise ValueError("❌ No basins matched the station list.")
+
+    # Convert to WGS84 to get Lat/Lon
+    gdf_wgs84 = gdf_all.to_crs("EPSG:4326")
+    minx, miny, maxx, maxy = gdf_wgs84.total_bounds
+    
+    # Round bounds (Floor min, Ceil max) + Buffer (0.5 deg) for safety
+    bounds = {
+        'north': math.ceil(maxy + 0.5),
+        'south': math.floor(miny - 0.5),
+        'east': math.ceil(maxx + 0.5),
+        'west': math.floor(minx - 0.5)
+    }
+    
+    # Save to CSV for other scripts
+    bounds_path = RAW_DATA_DIR / "spatial_bounds.csv"
+    pd.DataFrame([bounds]).to_csv(bounds_path, index=False)
+    print(f"✅ Spatial bounds saved to {bounds_path}")
+    print(f"   Bounds: {bounds}")
+    
+    return bounds
