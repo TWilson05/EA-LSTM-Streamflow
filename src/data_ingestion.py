@@ -6,10 +6,11 @@ import rasterio
 import urllib.parse
 import pandas as pd
 from rasterio.merge import merge
-from src.config import RAW_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, SPATIAL_BOUNDS, ELEVATION_DIR
+from src.config import RAW_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, ERA5_RAD_DIR, SPATIAL_BOUNDS, ELEVATION_DIR
 
 bounds = pd.read_csv(SPATIAL_BOUNDS)
 
+# Area bounds lat/lons: [North, West, South, East]
 ERA5_BOUNDS = [
     float(bounds.loc[0, "north"]),
     float(bounds.loc[0, "west"]),
@@ -100,6 +101,9 @@ def download_era5_temperature(years):
 
 def download_era5_precipitation(years):
     download_era5_land("total_precipitation", "era5_precip", ERA5_PRECIP_DIR, years)
+
+def download_era5_solar_rad(years):
+    download_era5_land("surface_solar_radiation_downwards", "era5_rad", ERA5_RAD_DIR, years)
 
 def latlon_to_tile(lat, lon, zoom):
     """Converts Lat/Lon to Web Mercator XYZ tile coordinates."""

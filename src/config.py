@@ -16,10 +16,11 @@ MODELS_DIR = PROJECT_ROOT / "models"
 ERA5_DIR = RAW_DATA_DIR / "era5"
 ERA5_PRECIP_DIR = ERA5_DIR / "precipitation"
 ERA5_TEMP_DIR = ERA5_DIR / "temperature"
+ERA5_RAD_DIR = ERA5_DIR / "radiation"
 # processed ERA5 data
 CLIMATE_OUTPUT_DIR = PROCESSED_DATA_DIR / "climate"
-# Area bounds lat/lons: [North, West, South, East]
-# Used for ERA5 download
+
+# Used for dem and era5 download ranges
 SPATIAL_BOUNDS = RAW_DATA_DIR / "spatial_bounds.csv"
 
 # Drainage Files
@@ -43,5 +44,7 @@ OUTPUT_GLACIER_VOL = PROCESSED_DATA_DIR / "glacier_volume_change.csv"
 
 
 # Create directories if they don't exist
-for path in [DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, CLIMATE_OUTPUT_DIR, ELEVATION_DIR, OUTPUT_DATA_DIR]:
+for path in [DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR,
+             ERA5_PRECIP_DIR, ERA5_TEMP_DIR, ERA5_RAD_DIR,
+             CLIMATE_OUTPUT_DIR, ELEVATION_DIR, OUTPUT_DATA_DIR]:
     path.mkdir(parents=True, exist_ok=True)
