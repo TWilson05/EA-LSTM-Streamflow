@@ -20,7 +20,7 @@ ERA5_TEMP_DIR = ERA5_DIR / "temperature"
 CLIMATE_OUTPUT_DIR = PROCESSED_DATA_DIR / "climate"
 # Area bounds lat/lons: [North, West, South, East]
 # Used for ERA5 download
-ERA5_BOUNDS = [62, -129, 47, -105] 
+SPATIAL_BOUNDS = RAW_DATA_DIR / "spatial_bounds.csv"
 
 # Drainage Files
 DRAINAGE_DIR = RAW_DATA_DIR / "drainage_areas"
