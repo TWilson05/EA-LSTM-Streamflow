@@ -1,7 +1,10 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-from src.config import MODELS_DIR
+from src.config import (MODELS_DIR,
+                        TRAIN_START_YEAR, TRAIN_END_YEAR,
+                        VAL_START_YEAR, VAL_END_YEAR,
+                        TEST_START_YEAR, TEST_END_YEAR)
 from src.data_utils import (load_raw_csvs, align_and_filter, calculate_runoff, 
                             compute_and_save_scalers, normalize)
 
@@ -38,9 +41,9 @@ def load_and_preprocess_data(sequence_length=365, batch_size=256, num_workers=0)
     stat_vals = static.values.astype(np.float32)
     
     # Masks
-    train_mask = (index.year >= 1990) & (index.year <= 2008)
-    val_mask = (index.year >= 2009) & (index.year <= 2012)
-    test_mask = ((index.year >= 1980) & (index.year <= 1989)) | (index.year >= 2013)
+    train_mask = (index.year >= TRAIN_START_YEAR) & (index.year <= TRAIN_END_YEAR)
+    val_mask = (index.year >= VAL_START_YEAR) & (index.year <= VAL_END_YEAR)
+    test_mask = (index.year >= TEST_START_YEAR) & (index.year <= TEST_END_YEAR)
     
     # Compute Normalization (Train Only)
     print("   Computing Norms...")

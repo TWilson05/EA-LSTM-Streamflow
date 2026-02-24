@@ -2,7 +2,7 @@ import torch
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from src.config import MODELS_DIR
+from src.config import MODELS_DIR, TEST_START_YEAR, TEST_END_YEAR
 from src.data_utils import load_raw_csvs, align_and_filter, load_scalers, normalize
 
 SEQUENCE_LENGTH = 365
@@ -36,9 +36,7 @@ def predict_and_save_test_results(model, device, output_file, batch_size=256):
     stat_norm = normalize(stat_vals, scalers['stat_mean'], scalers['stat_std'])
     
     # 5. Define Test Indices
-    # Matches the test split logic: 1980-1989 OR 2013-Present
-    test_mask = ((master_index.year >= 1980) & (master_index.year <= 1989)) | \
-                (master_index.year >= 2013)
+    test_mask = (master_index.year >= TEST_START_YEAR) & (master_index.year <= TEST_END_YEAR)
     
     # Convert boolean mask to integer indices relative to the master_index
     all_indices = np.arange(len(master_index))

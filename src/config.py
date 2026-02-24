@@ -14,6 +14,14 @@ MODELS_DIR = PROJECT_ROOT / "models"
 DATA_START_YEAR = 1980
 DATA_END_YEAR = 2022
 
+# Define train/validation/test splits
+TRAIN_START_YEAR = 1980
+TRAIN_END_YEAR = 2005
+VAL_START_YEAR = 2006
+VAL_END_YEAR = 2012
+TEST_START_YEAR = 2013
+TEST_END_YEAR = 2022
+
 ### RAW DATA
 
 # ERA5 Specific Paths
@@ -40,7 +48,8 @@ ELEVATION_DIR = RAW_DATA_DIR / "dem_data"
 
 # Glacier data files
 GLACIER_SHP_PATH = RAW_DATA_DIR / "RGI-western-canada" / "02_rgi60_WesternCanadaUS.shp"
-MASS_BALANCE_PATH = RAW_DATA_DIR / "mass_balance" / "ts_monthly_const_area_fnn_cluster.csv"
+GLACIER_AREA_PATH = RAW_DATA_DIR / "mass_balance" / "area_dyn.csv"
+MASS_BALANCE_PATH = RAW_DATA_DIR / "mass_balance" / "ts_monthly_const_area_lstm.csv"
 
 # Static attributes
 OUTPUT_STATIC_ATTR = PROCESSED_DATA_DIR / "static_attributes.csv"
