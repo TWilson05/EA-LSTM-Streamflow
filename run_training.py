@@ -16,24 +16,43 @@ def main():
     NUM_WORKERS = 4
     PATIENCE = 5
 
+    # FEATURE TOGGLES: Comment out variables to exclude them from the run
+    DYNAMIC_FEATURES = [
+        'precip',
+        'temp_max',
+        'temp_min'
+    ]
+
+    STATIC_FEATURES = [
+        'basin_area_km2',
+        'mean_elev',
+        'glacier_pct',
+        'std_elev',
+        'mean_slope',
+        'std_slope'
+    ]
+
     print(f"🚀 Job started on {DEVICE}")
+    print(f"📊 Features -> Dynamic: {len(DYNAMIC_FEATURES)} | Static: {len(STATIC_FEATURES)}")
 
     # 2. Load Data
     train_loader, val_loader, test_loader, stations = load_and_preprocess_data(
+        dynamic_cols=DYNAMIC_FEATURES,
+        static_cols=STATIC_FEATURES,
         sequence_length=365,
         batch_size=BATCH_SIZE,
-        num_workers=NUM_WORKERS)
+        num_workers=NUM_WORKERS
+        )
 
     # 3. Initialize Model
-    # Dynamic Features: Precip, Tmax, Tmin (3)
-    # Static Features: Area, MeanElev, Glacier% (3)
-    model = EALSTM(input_dim_dyn=3, 
-                input_dim_stat=3, 
+    model = EALSTM(input_dim_dyn=len(DYNAMIC_FEATURES), 
+                input_dim_stat=len(STATIC_FEATURES),
                 hidden_dim=HIDDEN_DIM).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     # 4. Training Loop
     best_val_loss = float('inf')
+    epochs_no_improve = 0
 
     print("Starting Training...")
     for epoch in range(EPOCHS):
@@ -76,6 +95,8 @@ def main():
         model,
         DEVICE,
         output_file=OUTPUT_DATA_DIR / "test_set_predictions.csv",
+        dynamic_cols=DYNAMIC_FEATURES,
+        static_cols=STATIC_FEATURES,
         batch_size=BATCH_SIZE
     )
     print("Done.")

@@ -29,40 +29,50 @@ class LazyStreamflowDataset(Dataset):
                 torch.from_numpy(self.stat[s]).float(), 
                 torch.tensor([self.y[t, s]]).float(),
                 torch.tensor([self.basin_stds[s]]).float())
-
-def load_and_preprocess_data(sequence_length=365, batch_size=256, num_workers=0):
+ 
+def load_and_preprocess_data(dynamic_cols, static_cols, sequence_length=365, batch_size=256, num_workers=0):
     print("⏳ Loading Data...")
-    p, tmax, tmin, flow, static = load_raw_csvs()
-    p, tmax, tmin, flow, static, stations, index = align_and_filter(p, tmax, tmin, flow, static)
     
-    # Prepare Arrays
-    dyn_array = np.stack([p.values, tmax.values, tmin.values], axis=2).astype(np.float32)
-    y_vals = calculate_runoff(flow.values, static['area_km2'].values).astype(np.float32)
+    # 1. Load and Align
+    dyn_dict_raw, flow_raw, static_raw = load_raw_csvs(dynamic_cols)
+    dyn_dict, flow, static_full, static, stations, index = align_and_filter(
+        dyn_dict_raw, flow_raw, static_raw, static_cols
+    )
+    
+    # 2. Dynamically Stack Arrays (Preserves the order of dynamic_cols!)
+    dyn_list = [dyn_dict[col].values for col in dynamic_cols]
+    dyn_array = np.stack(dyn_list, axis=2).astype(np.float32)
+    
+    # 3. Safely calculate runoff
+    # We pull area from static_full just in case 'basin_area_km2' isn't in static_cols
+    basin_areas = static_full.loc[stations, 'basin_area_km2'].values
+    y_vals = calculate_runoff(flow.values, basin_areas).astype(np.float32)
+    
     stat_vals = static.values.astype(np.float32)
     
-    # Masks
+    # 4. Time Masks
     train_mask = (index.year >= TRAIN_START_YEAR) & (index.year <= TRAIN_END_YEAR)
     val_mask = (index.year >= VAL_START_YEAR) & (index.year <= VAL_END_YEAR)
     test_mask = (index.year >= TEST_START_YEAR) & (index.year <= TEST_END_YEAR)
     
-    # Compute Normalization (Train Only)
+    # 5. Compute Normalization (Train Only)
     print("   Computing Norms...")
     train_dyn = dyn_array[train_mask]
     basin_stds = np.nanstd(y_vals[train_mask], axis=0)
     basin_stds[basin_stds < 1e-4] = 1.0
     
-    static_feature_names = ['area_km2', 'glacier_pct', 'mean_elev']
+    # Pass the dynamic static_cols variable instead of the hardcoded list
     scalers = compute_and_save_scalers(train_dyn,
                                        stat_vals,
                                        basin_stds,
                                        MODELS_DIR / "scalers.json",
-                                       static_feature_names)
+                                       static_cols)
     
-    # Apply Normalization
+    # 6. Apply Normalization
     dyn_norm = normalize(dyn_array, scalers['dyn_mean'], scalers['dyn_std'])
     stat_norm = normalize(stat_vals, scalers['stat_mean'], scalers['stat_std'])
     
-    # Create Loaders
+    # 7. Create Loaders
     def make_loader(mask, shuffle):
         indices = np.where(mask)[0]
         valid_indices = indices[indices >= sequence_length]
