@@ -87,7 +87,8 @@ def download_era5_land(variable, file_name, directory, years, months=range(1, 13
                 "month": f"{month:02d}",
                 "day": day_list,
                 "time": [f"{h:02d}:00" for h in range(24)],
-                "data_format": "netcdf"
+                "data_format": "netcdf",
+                "download_format": "unarchived"
             }
 
             try:
