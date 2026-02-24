@@ -14,6 +14,7 @@ def main():
     LEARNING_RATE = 1e-3
     BATCH_SIZE = 512
     NUM_WORKERS = 4
+    PATIENCE = 5
 
     print(f"🚀 Job started on {DEVICE}")
 
@@ -42,13 +43,23 @@ def main():
         # Validate (2009-2012)
         val_loss = evaluate(model, val_loader, DEVICE)
         
-        print(f"Epoch {epoch+1}/{EPOCHS} | Train Loss (NSE*): {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+        print(f"Epoch {epoch+1:02d}/{EPOCHS} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
         
         # Save Best Model based on Validation
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            epochs_no_improve = 0 # Reset counter
             torch.save(model.state_dict(), MODELS_DIR / "best_model.pth")
-            print("   --> Saved new best model")
+            print("  --> Saved new best model")
+        else:
+            epochs_no_improve += 1
+            print(f"  --> No improvement for {epochs_no_improve} epochs")
+            
+            # Early Stopping Check
+            if epochs_no_improve >= PATIENCE:
+                print(f"\n🛑 Early stopping triggered! Validation loss hasn't improved in {PATIENCE} epochs.")
+                print("Restoring best weights and moving to final evaluation...")
+                break
 
     # 5. Final Benchmark
     print("\n--- Final Evaluation ---")
