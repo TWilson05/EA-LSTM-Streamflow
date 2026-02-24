@@ -3,7 +3,7 @@ import torch
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from src.config import MODELS_DIR, TEST_START_DATE, TEST_END_DATE
+from src.config import MODELS_DIR, TEST_START_YEAR, TEST_END_YEAR
 from src.data_utils import load_raw_csvs, align_and_filter, load_scalers, normalize
 
 SEQUENCE_LENGTH = 365
@@ -38,7 +38,7 @@ def predict_and_save_test_results(model, device, output_file, dynamic_cols, stat
     stat_norm = normalize(stat_vals, scalers['stat_mean'], scalers['stat_std'])
     
     # 5. Define Test Indices using specific dates
-    test_mask = (master_index >= TEST_START_DATE) & (master_index <= TEST_END_DATE)
+    test_mask = (master_index >= TEST_START_YEAR) & (master_index <= TEST_END_YEAR)
     
     # Convert boolean mask to integer indices relative to the master_index
     all_indices = np.arange(len(master_index))

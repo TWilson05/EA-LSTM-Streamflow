@@ -23,7 +23,7 @@ def load_raw_csvs(dynamic_cols):
         dyn_dict[col] = pd.read_csv(file_path, index_col=0, parse_dates=True)
 
     # Always load streamflow and static attributes
-    flow = pd.read_csv(RAW_DATA_DIR / "combined_streamflow.csv", index_col=0, parse_dates=True)
+    flow = pd.read_csv(PROCESSED_DATA_DIR / "combined_streamflow.csv", index_col=0, parse_dates=True)
     static = pd.read_csv(PROCESSED_DATA_DIR / "static_attributes.csv", index_col=0)
     
     # Standardize Area column name to match your config lists

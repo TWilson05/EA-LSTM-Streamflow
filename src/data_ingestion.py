@@ -6,7 +6,7 @@ import rasterio
 import urllib.parse
 import pandas as pd
 from rasterio.merge import merge
-from src.config import RAW_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, ERA5_RAD_DIR, SPATIAL_BOUNDS, ELEVATION_DIR
+from src.config import PROCESSED_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, ERA5_RAD_DIR, SPATIAL_BOUNDS, ELEVATION_DIR
 
 bounds = pd.read_csv(SPATIAL_BOUNDS)
 
@@ -55,7 +55,7 @@ def fetch_streamflow_batch(stations, start_year : int, end_year : int, output_fi
 
     # save to csv
     if output_filename:
-        df_wide.to_csv(RAW_DATA_DIR / output_filename)
+        df_wide.to_csv(PROCESSED_DATA_DIR / output_filename)
         print("Data downloaded and saved to combined_streamflow.csv")
 
     print(f"{df_wide.shape[0]} days of data saved for {df_wide.shape[1]} stations")
