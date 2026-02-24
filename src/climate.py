@@ -77,7 +77,7 @@ def compute_spatial_weights(basins_gdf, lats, lons):
 def process_era5_files(files, weights_map, var_type):
     """
     Unified function for processing Hourly NC files.
-    Applies weights using vectorized NumPy advanced indexing.
+    Applies weights using vectorized NumPy advanced indexing with NaN handling.
     """
     # 1. Pre-compile the spatial indices for ultra-fast NumPy extraction
     stn_meta = {}
@@ -107,11 +107,31 @@ def process_era5_files(files, weights_map, var_type):
                 time_coord = 'valid_time' if 'valid_time' in ds.coords else 'time'
                 times = pd.to_datetime(ds[time_coord].values) - pd.Timedelta(hours=7)
                 
-                # Vectorized Spatial Averaging
+                # Vectorized Spatial Averaging with NaN Safeguard
                 hourly_data = {}
                 for stn, (lats, lons, ws) in stn_meta.items():
-                    # data[:, lats, lons] grabs all pixels for the basin across all times instantly
-                    hourly_data[stn] = np.sum(data[:, lats, lons] * ws, axis=1)
+                    pixel_data = data[:, lats, lons] # Extract all pixels for this basin
+                    
+                    # --- NEW FIX: Handle NaNs (Coastlines/Water Bodies) ---
+                    if np.isnan(pixel_data).any():
+                        # Create a mask where data actually exists
+                        valid_mask = ~np.isnan(pixel_data)
+                        
+                        # Zero out weights where data is missing
+                        active_weights = ws * valid_mask 
+                        
+                        # Find the new total weight for each time step
+                        weight_sums = np.sum(active_weights, axis=1)
+                        
+                        # Prevent division by zero if an entire basin is off-shore
+                        weight_sums[weight_sums == 0] = np.nan 
+                        
+                        # Calculate the NaN-safe weighted average
+                        hourly_data[stn] = np.nansum(pixel_data * ws, axis=1) / weight_sums
+                    else:
+                        # Fast path if the basin is fully inland (no NaNs)
+                        hourly_data[stn] = np.sum(pixel_data * ws, axis=1)
+                    # --------------------------------------------------------
                     
                 df_hourly = pd.DataFrame(hourly_data, index=times)
                 
