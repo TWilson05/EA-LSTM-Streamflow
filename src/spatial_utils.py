@@ -18,40 +18,54 @@ CANADA_ALBERS_CRS = "+proj=aea +lat_1=50 +lat_2=70 +lat_0=40 +lon_0=-96 +x_0=0 +
 
 def generate_slope_raster(dem_path, slope_path):
     """
-    Reads the DEM in small chunks (windows) to prevent memory errors,
-    calculates the topographic slope, and saves it to a new GeoTIFF.
+    Reads the DEM in manual square chunks to prevent memory errors,
+    calculates the 2D topographic slope, and saves it.
     """
     if slope_path.exists():
         print("   ℹ️ Using cached slope raster.")
         return slope_path
         
-    print("   ⏳ Generating slope raster via memory-safe chunking...")
+    print("   ⏳ Generating slope raster via 2D chunking...")
     
     with rasterio.open(dem_path) as src:
         kwargs = src.meta.copy()
-        # Force output to 32-bit float to save disk space
         kwargs.update(dtype=rasterio.float32, nodata=-9999.0)
         dx, dy = src.res
         
+        width = src.width
+        height = src.height
+        chunk_size = 2048 # ~16MB per chunk in memory
+        
         with rasterio.open(slope_path, 'w', **kwargs) as dst:
-            # Process the raster in small memory-safe blocks
-            for ji, window in src.block_windows(1):
-                # Explicitly cast to float32
-                elev = src.read(1, window=window).astype(np.float32)
-                
-                # gradient requires at least a 2x2 array
-                if elev.shape[0] < 2 or elev.shape[1] < 2:
-                    slope = np.zeros_like(elev)
-                else:
-                    dy_grad, dx_grad = np.gradient(elev, dy, dx)
-                    slope = np.arctan(np.sqrt(dx_grad**2 + dy_grad**2)) * (180.0 / np.pi)
-                
-                # Apply nodata mask
-                if src.nodata is not None:
-                    slope[elev == src.nodata] = -9999.0
+            
+            # Manually loop over the image in 2D squares
+            for i in range(0, height, chunk_size):
+                for j in range(0, width, chunk_size):
                     
-                dst.write(slope.astype(rasterio.float32), 1, window=window)
-                
+                    # Define the window boundaries, preventing out-of-bounds at the edges
+                    w = min(chunk_size, width - j)
+                    h = min(chunk_size, height - i)
+                    window = rasterio.windows.Window(j, i, w, h)
+                    
+                    # Read chunk and cast to float
+                    elev = src.read(1, window=window).astype(np.float32)
+                    
+                    # 1. Mask Nodata to NaN BEFORE gradient calculation
+                    if src.nodata is not None:
+                        elev[elev == src.nodata] = np.nan
+                        
+                    # 2. Calculate Gradient
+                    if h < 2 or w < 2:
+                        slope = np.zeros_like(elev)
+                    else:
+                        dy_grad, dx_grad = np.gradient(elev, dy, dx)
+                        slope = np.arctan(np.sqrt(dx_grad**2 + dy_grad**2)) * (180.0 / np.pi)
+                    
+                    # 3. Restore Nodata mask for saving
+                    slope[np.isnan(slope)] = -9999.0
+                    
+                    dst.write(slope.astype(rasterio.float32), 1, window=window)
+                    
     print(f"   ✅ Saved slope raster to {slope_path}")
     return slope_path
 
