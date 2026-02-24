@@ -1,11 +1,13 @@
 import geopandas as gpd
 import pandas as pd
+import numpy as np
+import rasterio
 import warnings
 from rasterstats import zonal_stats
 from src.config import (
     DRAINAGE_FILES, 
     ELEVATION_DIR, 
-    GLACIER_SHP_PATH, 
+    GLACIER_SHP_PATH,
     MASS_BALANCE_PATH,
     OUTPUT_STATIC_ATTR,
     OUTPUT_GLACIER_VOL
@@ -13,6 +15,45 @@ from src.config import (
 
 # Standard Equal Area projection for Western Canada
 CANADA_ALBERS_CRS = "+proj=aea +lat_1=50 +lat_2=70 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs"
+
+def generate_slope_raster(dem_path, slope_path):
+    """
+    Reads the DEM in small chunks (windows) to prevent memory errors,
+    calculates the topographic slope, and saves it to a new GeoTIFF.
+    """
+    if slope_path.exists():
+        print("   ℹ️ Using cached slope raster.")
+        return slope_path
+        
+    print("   ⏳ Generating slope raster via memory-safe chunking...")
+    
+    with rasterio.open(dem_path) as src:
+        kwargs = src.meta.copy()
+        # Force output to 32-bit float to save disk space
+        kwargs.update(dtype=rasterio.float32, nodata=-9999.0)
+        dx, dy = src.res
+        
+        with rasterio.open(slope_path, 'w', **kwargs) as dst:
+            # Process the raster in small memory-safe blocks
+            for ji, window in src.block_windows(1):
+                # Explicitly cast to float32
+                elev = src.read(1, window=window).astype(np.float32)
+                
+                # gradient requires at least a 2x2 array
+                if elev.shape[0] < 2 or elev.shape[1] < 2:
+                    slope = np.zeros_like(elev)
+                else:
+                    dy_grad, dx_grad = np.gradient(elev, dy, dx)
+                    slope = np.arctan(np.sqrt(dx_grad**2 + dy_grad**2)) * (180.0 / np.pi)
+                
+                # Apply nodata mask
+                if src.nodata is not None:
+                    slope[elev == src.nodata] = -9999.0
+                    
+                dst.write(slope.astype(rasterio.float32), 1, window=window)
+                
+    print(f"   ✅ Saved slope raster to {slope_path}")
+    return slope_path
 
 def process_spatial_attributes(stations_list):
     """
@@ -49,25 +90,36 @@ def process_spatial_attributes(stations_list):
     gdf_basins = gdf_basins[gdf_basins['station_id'].isin(requested_stations)].copy()
     print(f"✅ Processing {len(gdf_basins)} basins.")
 
-    # --- 2. Compute Elevation ---
-    print("⏳ Computing Basin Elevations...")
+    # --- 2. Compute Elevation & Slope ---
+    print("⏳ Computing Basin Elevations and Slopes...")
     dem_path = ELEVATION_DIR / "western_canada_dem.tif"
+    slope_path = ELEVATION_DIR / "western_canada_slope.tif"
     
     if not dem_path.exists():
         raise FileNotFoundError(f"❌ DEM not found at {dem_path}. Run data_ingestion.download_aws_dem first!")
 
-    # Reproject Basins to DEM CRS (EPSG:3857 for AWS tiles) for fast zonal stats
-    # (Much faster than reprojecting the massive raster)
+    # Generate slope raster if it doesn't exist yet
+    generate_slope_raster(dem_path, slope_path)
+
+    # Reproject Basins to DEM CRS (EPSG:3857 for AWS tiles)
     basins_proj = gdf_basins.to_crs("EPSG:3857")
     
-    stats = zonal_stats(basins_proj, str(dem_path), stats="mean")
-    gdf_basins['mean_elev'] = [s['mean'] for s in stats]
+    # Calculate Elevation Stats (Mean & Std)
+    elev_stats = zonal_stats(basins_proj, str(dem_path), stats="mean std")
+    gdf_basins['mean_elev'] = [s['mean'] for s in elev_stats]
+    gdf_basins['std_elev'] = [s['std'] for s in elev_stats]
 
-    # Fill Missing
-    missing = gdf_basins['mean_elev'].isna().sum()
-    if missing > 0:
-        print(f"   ⚠️ Warning: {missing} basins outside DEM coverage. Filling with median.")
-        gdf_basins['mean_elev'] = gdf_basins['mean_elev'].fillna(gdf_basins['mean_elev'].median())
+    # Calculate Slope Stats (Mean & Std)
+    slope_stats = zonal_stats(basins_proj, str(slope_path), stats="mean std")
+    gdf_basins['mean_slope'] = [s['mean'] for s in slope_stats]
+    gdf_basins['std_slope'] = [s['std'] for s in slope_stats]
+
+    # Fill Missing Data with medians across all stations
+    for col in ['mean_elev', 'std_elev', 'mean_slope', 'std_slope']:
+        missing = gdf_basins[col].isna().sum()
+        if missing > 0:
+            print(f"   ⚠️ Warning: {missing} basins missing {col}. Filling with median.")
+            gdf_basins[col] = gdf_basins[col].fillna(gdf_basins[col].median())
 
     # --- 3. Compute Areas (Reproject to Albers) ---
     gdf_basins = gdf_basins.to_crs(CANADA_ALBERS_CRS)
@@ -90,7 +142,11 @@ def process_spatial_attributes(stations_list):
     # --- 5. Save Static Attributes ---
     glacier_sums = intersection.groupby('station_id')['glacier_area_km2'].sum()
     
-    static_df = gdf_basins[['station_id', 'basin_area_km2', 'mean_elev']].set_index('station_id')
+    # Update dataframe to include the new columns
+    static_df = gdf_basins[[
+        'station_id', 'basin_area_km2', 'mean_elev', 'std_elev', 'mean_slope', 'std_slope'
+    ]].set_index('station_id')
+    
     static_df['glacier_area_km2'] = glacier_sums
     static_df['glacier_area_km2'] = static_df['glacier_area_km2'].fillna(0)
     static_df['glacier_pct'] = (static_df['glacier_area_km2'] / static_df['basin_area_km2']) * 100
