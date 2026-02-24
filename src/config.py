@@ -10,6 +10,10 @@ PROCESSED_DATA_DIR = DATA_DIR / "processed"
 OUTPUT_DATA_DIR = DATA_DIR / "output"
 MODELS_DIR = PROJECT_ROOT / "models"
 
+# Define start and end years
+DATA_START_YEAR = 1980
+DATA_END_YEAR = 2022
+
 ### RAW DATA
 
 # ERA5 Specific Paths
