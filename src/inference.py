@@ -38,7 +38,7 @@ def predict_and_save_test_results(model, device, output_file, dynamic_cols, stat
     stat_norm = normalize(stat_vals, scalers['stat_mean'], scalers['stat_std'])
     
     # 5. Define Test Indices using specific dates
-    test_mask = (master_index >= TEST_START_YEAR) & (master_index <= TEST_END_YEAR)
+    test_mask = (master_index.year >= TEST_START_YEAR) & (master_index.year <= TEST_END_YEAR)
     
     # Convert boolean mask to integer indices relative to the master_index
     all_indices = np.arange(len(master_index))
