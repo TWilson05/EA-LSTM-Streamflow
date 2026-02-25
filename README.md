@@ -45,6 +45,12 @@ To train the EA-LSTM model, this project utilized UBC ARC Sockeye. The following
    chmod +x hpc/setup_env.sh
    ./hpc/setup_env.sh
    ```
+   *Troubleshooting*: If you recieve an error, try running this first and then trying again:
+   ```
+   sed -i 's/\r$//' setup_env.sh
+   sed -i 's/\r$//' submit.sh
+   sed -i 's/\r$//' job.sh
+   ```
 6. **Submit the Job**
    The submit script automatically handles directory setup, secrets injection, and SLURM submission.
    ```
