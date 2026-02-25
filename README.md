@@ -71,6 +71,8 @@ To train the EA-LSTM model, this project utilized UBC ARC Sockeye. The following
    ```bash
    # download test set predictions
    scp <cwl>@sockeye.arc.ubc.ca:/scratch/<alloc-code>/ealstm_project/data/output/test_set_predictions.csv ./data/output/
+   ```
+   ```
    # download saved model
    scp -r <cwl>@sockeye.arc.ubc.ca:/scratch/<alloc-code>/ealstm_project/models/ ./
    ```
