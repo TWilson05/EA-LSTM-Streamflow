@@ -161,12 +161,85 @@ def process_era5_files(files, weights_map, var_type):
             df_min_final[~df_min_final.index.duplicated(keep='first')],
             df_max_final[~df_max_final.index.duplicated(keep='first')]
         )
+    
+def process_snow_rain_files(precip_files, temp_files, weights_map):
+    """
+    Processes Precip and Temp files simultaneously to split precipitation into 
+    Rain and Snow at the hourly grid-cell level before basin aggregation.
+    """
+    stn_meta = {}
+    for stn, w_dict in weights_map.items():
+        lat_idx = [k[0] for k in w_dict.keys()]
+        lon_idx = [k[1] for k in w_dict.keys()]
+        w_arr = np.array(list(w_dict.values()))
+        stn_meta[stn] = (lat_idx, lon_idx, w_arr)
+        
+    daily_snow_dfs = []
+    daily_rain_dfs = []
+    
+    # Process paired files (assuming they are perfectly sorted by month/year)
+    for p_file, t_file in tqdm(zip(precip_files, temp_files), total=len(precip_files), desc="Snow/Rain Split"):
+        try:
+            with xr.open_dataset(p_file, engine='netcdf4') as dp, xr.open_dataset(t_file, engine='netcdf4') as dt:
+                p_var = next((v for v in ['tp', 'total_precipitation', 'precip'] if v in dp.variables), None)
+                t_var = next((v for v in ['t2m', '2t'] if v in dt.variables), None)
+                
+                p_data = dp[p_var].values 
+                t_data = dt[t_var].values 
+                
+                time_coord = 'valid_time' if 'valid_time' in dp.coords else 'time'
+                times = pd.to_datetime(dp[time_coord].values) - pd.Timedelta(hours=7)
+                
+                hourly_snow = {}
+                hourly_rain = {}
+                
+                for stn, (lats, lons, ws) in stn_meta.items():
+                    p_pixel = p_data[:, lats, lons]
+                    t_pixel = t_data[:, lats, lons]
+                    
+                    # Create boolean mask for Snow (Temp < 0°C / 273.15K)
+                    is_snow = t_pixel < 273.15
+                    
+                    # Split the precipitation array
+                    snow_pixel = np.where(is_snow, p_pixel, 0.0)
+                    rain_pixel = np.where(~is_snow, p_pixel, 0.0)
+                    
+                    # NaN Safeguard (Coastlines)
+                    if np.isnan(p_pixel).any() or np.isnan(t_pixel).any():
+                        valid_mask = ~np.isnan(p_pixel) & ~np.isnan(t_pixel)
+                        active_weights = ws * valid_mask 
+                        weight_sums = np.sum(active_weights, axis=1)
+                        weight_sums[weight_sums == 0] = np.nan 
+                        
+                        hourly_snow[stn] = np.nansum(snow_pixel * ws, axis=1) / weight_sums
+                        hourly_rain[stn] = np.nansum(rain_pixel * ws, axis=1) / weight_sums
+                    else:
+                        hourly_snow[stn] = np.sum(snow_pixel * ws, axis=1)
+                        hourly_rain[stn] = np.sum(rain_pixel * ws, axis=1)
+                        
+                # Resample to Daily and convert m to mm
+                df_snow = pd.DataFrame(hourly_snow, index=times).resample('D').sum() * 1000
+                df_rain = pd.DataFrame(hourly_rain, index=times).resample('D').sum() * 1000
+                
+                daily_snow_dfs.append(df_snow)
+                daily_rain_dfs.append(df_rain)
+                
+        except Exception as e:
+            print(f"❌ Error processing {p_file.name} / {t_file.name}: {e}")
 
-def process_era5_basin_data(basin_gpkg_list, stations_list):
+    df_snow_final = pd.concat(daily_snow_dfs).sort_index()
+    df_rain_final = pd.concat(daily_rain_dfs).sort_index()
+    
+    return (
+        df_snow_final[~df_snow_final.index.duplicated(keep='first')],
+        df_rain_final[~df_rain_final.index.duplicated(keep='first')]
+    )
+
+def process_era5_basin_data(basin_gpkg_list, stations_list, split_snow=True):
     """Main Orchestrator"""
     
     # 1. Load Basins
-    print("Step 1/4: Loading Basins...")
+    print("Step 1/5: Loading Basins...")
     gdfs = []
     for p in basin_gpkg_list:
         gdf = gpd.read_file(p, layer='DrainageBasin_BassinDeDrainage')
@@ -183,8 +256,10 @@ def process_era5_basin_data(basin_gpkg_list, stations_list):
         filtered_gdf = filtered_gdf.to_crs("EPSG:4326")
     
     # 2. Map Weights
-    print("Step 2/4: Mapping Spatial Weights...")
+    print("Step 2/5: Mapping Spatial Weights...")
     precip_files = sorted(list(ERA5_PRECIP_DIR.glob("*.nc")))
+    temp_files = sorted(list(ERA5_TEMP_DIR.glob("*.nc")))
+    
     if not precip_files: 
         raise FileNotFoundError("No ERA5 Precip files found")
     
@@ -194,23 +269,29 @@ def process_era5_basin_data(basin_gpkg_list, stations_list):
     if not weights:
         raise ValueError("Weights Dictionary is empty.")
     
-    # 3. Process Precip
-    print("\nStep 3/4: Processing Precipitation...")
+    # 3. Process Total Precip
+    print("\nStep 3/5: Processing Total Precipitation...")
     df_precip = process_era5_files(precip_files, weights, var_type='precip')
-    
-    precip_out = CLIMATE_OUTPUT_DIR / "daily_precipitation.csv"
-    df_precip.to_csv(precip_out)
-    print(f"✅ Precipitation data saved to {precip_out}.")
+    df_precip.to_csv(CLIMATE_OUTPUT_DIR / "daily_precipitation.csv")
+    print("✅ Total Precipitation data saved.")
     
     # 4. Process Temp
-    print("\nStep 4/4: Processing Temperature...")
-    temp_files = sorted(list(ERA5_TEMP_DIR.glob("*.nc")))
-    
+    print("\nStep 4/5: Processing Temperature...")
     if temp_files:
         df_min, df_max = process_era5_files(temp_files, weights, var_type='temp')
-        
         df_min.to_csv(CLIMATE_OUTPUT_DIR / "daily_temp_min.csv")
         df_max.to_csv(CLIMATE_OUTPUT_DIR / "daily_temp_max.csv")
-        print(f"✅ Temperature data saved to {CLIMATE_OUTPUT_DIR}.")
+        print("✅ Temperature data saved.")
         
-    print("✅ Climate processing complete.")
+    # 5. Split Snow and Rain
+    if split_snow and precip_files and temp_files:
+        print("\nStep 5/5: Splitting Precipitation into Rain and Snow...")
+        if len(precip_files) != len(temp_files):
+            print("⚠️ Warning: Number of Precip and Temp files do not match. Ensure time coverage is identical.")
+            
+        df_snow, df_rain = process_snow_rain_files(precip_files, temp_files, weights)
+        df_snow.to_csv(CLIMATE_OUTPUT_DIR / "daily_snowfall.csv")
+        df_rain.to_csv(CLIMATE_OUTPUT_DIR / "daily_rainfall.csv")
+        print("✅ Snowfall and Rainfall data saved.")
+        
+    print("\n🎉 Climate processing complete.")
