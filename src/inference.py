@@ -8,7 +8,7 @@ from src.data_utils import load_raw_csvs, align_and_filter, load_scalers, normal
 
 SEQUENCE_LENGTH = 365
 
-def predict_and_save_test_results(model, device, output_file, dynamic_cols, static_cols, batch_size=256):
+def predict_and_save_test_results(model, device, output_file, dynamic_cols, static_cols, batch_size=256, force_zero_glacier=False):
     """
     Generates predictions for the test set and saves them to a CSV.
     Rows: Dates, Columns: Station IDs.
@@ -34,6 +34,13 @@ def predict_and_save_test_results(model, device, output_file, dynamic_cols, stat
     
     # 4. Normalize Static Features
     # 'static' is already filtered to 'static_cols' from align_and_filter
+
+    # --- COUNTERFACTUAL OVERRIDE ---
+    if force_zero_glacier and 'glacier_pct' in static_cols:
+        print("   ❄️ OVERRIDE: Forcing glacier_pct to 0.0 for counterfactual analysis...")
+        static['glacier_pct'] = 0.0
+    # -------------------------------
+    
     stat_vals = static.values.astype(np.float32)
     stat_norm = normalize(stat_vals, scalers['stat_mean'], scalers['stat_std'])
     

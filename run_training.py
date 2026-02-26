@@ -83,7 +83,7 @@ def main():
     # 5. Final Benchmark
     print("\n--- Final Evaluation ---")
     # Load the best weights (crucial step!)
-    model.load_state_dict(torch.load(MODELS_DIR / "best_model.pth"))
+    model.load_state_dict(torch.load(MODELS_DIR / "best_model.pth", weights_only=True))
 
     # A. Quantitative Score
     test_loss = evaluate(model, test_loader, DEVICE)
@@ -97,8 +97,23 @@ def main():
         output_file=OUTPUT_DATA_DIR / "test_set_predictions.csv",
         dynamic_cols=DYNAMIC_FEATURES,
         static_cols=STATIC_FEATURES,
-        batch_size=BATCH_SIZE
+        batch_size=BATCH_SIZE,
+        force_zero_glacier=False
     )
+
+    # C. Generate Counterfactual (0% Glaciation) Predictions
+    if 'glacier_pct' in STATIC_FEATURES:
+        print("\nGenerating Counterfactual Predictions CSV (0% Glaciation)...")
+        predict_and_save_test_results(
+            model,
+            DEVICE,
+            output_file=OUTPUT_DATA_DIR / "test_set_predictions_no_glacier.csv",
+            dynamic_cols=DYNAMIC_FEATURES,
+            static_cols=STATIC_FEATURES,
+            batch_size=BATCH_SIZE,
+            force_zero_glacier=True
+        )
+
     print("Done.")
 
 if __name__ == "__main__":
