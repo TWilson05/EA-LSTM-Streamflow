@@ -2,13 +2,15 @@ import pandas as pd
 import numpy as np
 import json
 import os
-from src.config import PROCESSED_DATA_DIR, CLIMATE_OUTPUT_DIR, RAW_DATA_DIR
+from src.config import PROCESSED_DATA_DIR, CLIMATE_OUTPUT_DIR
 
 # Map feature names to their corresponding files
 DYNAMIC_FILE_MAP = {
     'precip': "daily_precipitation.csv",
     'temp_max': "daily_temp_max.csv",
-    'temp_min': "daily_temp_min.csv"
+    'temp_min': "daily_temp_min.csv",
+    'snow': "daily_snowfall.csv",
+    'rain': "daily_rainfall.csv"
 }
 
 def load_raw_csvs(dynamic_cols):
