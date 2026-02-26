@@ -20,6 +20,6 @@
 # python related files
 __pycache__
 *.egg-info
-venv
+*venv
 # environment files
 *.env
