@@ -165,7 +165,8 @@ def process_era5_files(files, weights_map, var_type):
 def process_snow_rain_files(precip_files, temp_files, weights_map):
     """
     Processes Precip and Temp files simultaneously to split precipitation into 
-    Rain and Snow at the hourly grid-cell level before basin aggregation.
+    Rain and Snow at the hourly grid-cell level, and computes the fraction of 
+    the basin below 0°C.
     """
     stn_meta = {}
     for stn, w_dict in weights_map.items():
@@ -176,9 +177,10 @@ def process_snow_rain_files(precip_files, temp_files, weights_map):
         
     daily_snow_dfs = []
     daily_rain_dfs = []
+    daily_frac_dfs = []
     
     # Process paired files (assuming they are perfectly sorted by month/year)
-    for p_file, t_file in tqdm(zip(precip_files, temp_files), total=len(precip_files), desc="Snow/Rain Split"):
+    for p_file, t_file in tqdm(zip(precip_files, temp_files), total=len(precip_files), desc="Snow/Rain/Frac Split"):
         try:
             with xr.open_dataset(p_file, engine='netcdf4') as dp, xr.open_dataset(t_file, engine='netcdf4') as dt:
                 p_var = next((v for v in ['tp', 'total_precipitation', 'precip'] if v in dp.variables), None)
@@ -192,6 +194,7 @@ def process_snow_rain_files(precip_files, temp_files, weights_map):
                 
                 hourly_snow = {}
                 hourly_rain = {}
+                hourly_frac = {}
                 
                 for stn, (lats, lons, ws) in stn_meta.items():
                     p_pixel = p_data[:, lats, lons]
@@ -213,27 +216,41 @@ def process_snow_rain_files(precip_files, temp_files, weights_map):
                         
                         hourly_snow[stn] = np.nansum(snow_pixel * ws, axis=1) / weight_sums
                         hourly_rain[stn] = np.nansum(rain_pixel * ws, axis=1) / weight_sums
+                        
+                        # Fraction below zero (sum of valid active weights where temp < 0)
+                        hourly_frac[stn] = np.nansum(is_snow * active_weights, axis=1) / weight_sums
                     else:
                         hourly_snow[stn] = np.sum(snow_pixel * ws, axis=1)
                         hourly_rain[stn] = np.sum(rain_pixel * ws, axis=1)
                         
-                # Resample to Daily and convert m to mm
+                        # Fraction below zero (sum of weights where temp < 0)
+                        hourly_frac[stn] = np.sum(is_snow * ws, axis=1)
+                        
+                # Resample to Daily
+                # Precip is accumulated -> sum(), convert to mm
                 df_snow = pd.DataFrame(hourly_snow, index=times).resample('D').sum() * 1000
                 df_rain = pd.DataFrame(hourly_rain, index=times).resample('D').sum() * 1000
                 
+                # Fraction is an area -> mean() across the 24 hours
+                df_frac = pd.DataFrame(hourly_frac, index=times).resample('D').mean()
+                
                 daily_snow_dfs.append(df_snow)
                 daily_rain_dfs.append(df_rain)
+                daily_frac_dfs.append(df_frac)
                 
         except Exception as e:
             print(f"❌ Error processing {p_file.name} / {t_file.name}: {e}")
 
     df_snow_final = pd.concat(daily_snow_dfs).sort_index()
     df_rain_final = pd.concat(daily_rain_dfs).sort_index()
+    df_frac_final = pd.concat(daily_frac_dfs).sort_index()
     
     return (
         df_snow_final[~df_snow_final.index.duplicated(keep='first')],
-        df_rain_final[~df_rain_final.index.duplicated(keep='first')]
+        df_rain_final[~df_rain_final.index.duplicated(keep='first')],
+        df_frac_final[~df_frac_final.index.duplicated(keep='first')]
     )
+
 
 def process_era5_basin_data(basin_gpkg_list, stations_list, split_snow=True):
     """Main Orchestrator"""
@@ -283,15 +300,16 @@ def process_era5_basin_data(basin_gpkg_list, stations_list, split_snow=True):
         df_max.to_csv(CLIMATE_OUTPUT_DIR / "daily_temp_max.csv")
         print("✅ Temperature data saved.")
         
-    # 5. Split Snow and Rain
+    # 5. Split Snow, Rain, and Fraction Below Zero
     if split_snow and precip_files and temp_files:
-        print("\nStep 5/5: Splitting Precipitation into Rain and Snow...")
+        print("\nStep 5/5: Splitting Precipitation into Rain/Snow and computing Freezing Fraction...")
         if len(precip_files) != len(temp_files):
             print("⚠️ Warning: Number of Precip and Temp files do not match. Ensure time coverage is identical.")
             
-        df_snow, df_rain = process_snow_rain_files(precip_files, temp_files, weights)
+        df_snow, df_rain, df_frac = process_snow_rain_files(precip_files, temp_files, weights)
         df_snow.to_csv(CLIMATE_OUTPUT_DIR / "daily_snowfall.csv")
         df_rain.to_csv(CLIMATE_OUTPUT_DIR / "daily_rainfall.csv")
-        print("✅ Snowfall and Rainfall data saved.")
+        df_frac.to_csv(CLIMATE_OUTPUT_DIR / "daily_fraction_below_zero.csv")
+        print("✅ Snowfall, Rainfall, and Fraction Below Zero data saved.")
         
     print("\n🎉 Climate processing complete.")
