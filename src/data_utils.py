@@ -10,7 +10,8 @@ DYNAMIC_FILE_MAP = {
     'temp_max': "daily_temp_max.csv",
     'temp_min': "daily_temp_min.csv",
     'snow': "daily_snowfall.csv",
-    'rain': "daily_rainfall.csv"
+    'rain': "daily_rainfall.csv",
+    "freeze_frac": "daily_fraction_below_zero.csv"
 }
 
 def load_raw_csvs(dynamic_cols):

@@ -18,18 +18,20 @@ def main():
 
     # FEATURE TOGGLES: Comment out variables to exclude them from the run
     DYNAMIC_FEATURES = [
-        'precip',
+        # 'precip',
         'temp_max',
-        'temp_min'
+        'temp_min',
+        'rain',
+        'snow',
+        'freeze_frac'
     ]
 
     STATIC_FEATURES = [
         'basin_area_km2',
         'mean_elev',
         'glacier_pct',
-        'std_elev',
-        'mean_slope',
-        'std_slope'
+        'elev_range',
+        'mean_slope'
     ]
 
     print(f"🚀 Job started on {DEVICE}")
