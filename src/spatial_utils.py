@@ -118,18 +118,19 @@ def process_spatial_attributes(stations_list):
     # Reproject Basins to DEM CRS (EPSG:3857 for AWS tiles)
     basins_proj = gdf_basins.to_crs("EPSG:3857")
     
-    # Calculate Elevation Stats (Mean & Std)
-    elev_stats = zonal_stats(basins_proj, str(dem_path), stats="mean std")
+    # Calculate Elevation Stats (Mean, Min, Max, Range)
+    elev_stats = zonal_stats(basins_proj, str(dem_path), stats="mean min max range")
     gdf_basins['mean_elev'] = [s['mean'] for s in elev_stats]
-    gdf_basins['std_elev'] = [s['std'] for s in elev_stats]
+    gdf_basins['min_elev'] = [s['min'] for s in elev_stats]
+    gdf_basins['max_elev'] = [s['max'] for s in elev_stats]
+    gdf_basins['elev_range'] = [s['range'] for s in elev_stats]
 
-    # Calculate Slope Stats (Mean & Std)
-    slope_stats = zonal_stats(basins_proj, str(slope_path), stats="mean std")
+    # Calculate Slope Stats (Mean only)
+    slope_stats = zonal_stats(basins_proj, str(slope_path), stats="mean")
     gdf_basins['mean_slope'] = [s['mean'] for s in slope_stats]
-    gdf_basins['std_slope'] = [s['std'] for s in slope_stats]
 
     # Fill Missing Data with medians across all stations
-    for col in ['mean_elev', 'std_elev', 'mean_slope', 'std_slope']:
+    for col in ['mean_elev', 'min_elev', 'max_elev', 'elev_range', 'mean_slope']:
         missing = gdf_basins[col].isna().sum()
         if missing > 0:
             print(f"   ⚠️ Warning: {missing} basins missing {col}. Filling with median.")
@@ -158,7 +159,7 @@ def process_spatial_attributes(stations_list):
     
     # Update dataframe to include the new columns
     static_df = gdf_basins[[
-        'station_id', 'basin_area_km2', 'mean_elev', 'std_elev', 'mean_slope', 'std_slope'
+        'station_id', 'basin_area_km2', 'mean_elev', 'min_elev', 'max_elev', 'elev_range', 'mean_slope'
     ]].set_index('station_id')
     
     static_df['glacier_area_km2'] = glacier_sums
