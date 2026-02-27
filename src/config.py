@@ -55,6 +55,9 @@ MASS_BALANCE_PATH = RAW_DATA_DIR / "mass_balance" / "ts_monthly_const_area_lstm.
 OUTPUT_STATIC_ATTR = PROCESSED_DATA_DIR / "static_attributes.csv"
 OUTPUT_GLACIER_VOL = PROCESSED_DATA_DIR / "glacier_volume_change.csv"
 
+# Lake cover
+LAKE_COVER = RAW_DATA_DIR / "lake_cover.nc"
+
 
 # Create directories if they don't exist
 for path in [DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR,
