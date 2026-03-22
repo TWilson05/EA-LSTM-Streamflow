@@ -39,6 +39,9 @@ def predict_and_save_test_results(model, device, output_file, dynamic_cols, stat
     if force_zero_glacier and 'glacier_pct' in static_cols:
         print("   ❄️ OVERRIDE: Forcing glacier_pct to 0.0 for counterfactual analysis...")
         static['glacier_pct'] = 0.0
+    elif force_zero_glacier and 'glacier_area_km2' in static_cols:
+        print("   ❄️ OVERRIDE: Forcing glacier_area_km2 to 0.0 for counterfactual analysis...")
+        static['glacier_area_km2'] = 0.0
     # -------------------------------
     
     stat_vals = static.values.astype(np.float32)
