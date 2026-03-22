@@ -3,7 +3,7 @@ import torch
 from src.dataset import load_and_preprocess_data
 from src.models import EALSTM
 from src.training import train_epoch, evaluate
-from src.inference import predict_and_save_test_results
+from src.inference import predict_and_save_full_results
 from src.config import MODELS_DIR, OUTPUT_DATA_DIR
 
 # --- EXPERIMENT FEATURE MAPPINGS ---
@@ -95,7 +95,7 @@ def main():
     print(f"Test Set Basin-Averaged Loss: {test_loss:.4f}")
 
     print("Generating Standard Predictions CSV...")
-    predict_and_save_test_results(
+    predict_and_save_full_results(
         model, DEVICE, output_file=member_pred_path,
         dynamic_cols=DYNAMIC_FEATURES, static_cols=STATIC_FEATURES,
         batch_size=BATCH_SIZE, force_zero_glacier=False
@@ -103,7 +103,7 @@ def main():
 
     if 'glacier_pct' in STATIC_FEATURES:
         print("Generating Counterfactual Predictions CSV (0% Glaciation)...")
-        predict_and_save_test_results(
+        predict_and_save_full_results(
             model, DEVICE, output_file=member_cf_path,
             dynamic_cols=DYNAMIC_FEATURES, static_cols=STATIC_FEATURES,
             batch_size=BATCH_SIZE, force_zero_glacier=True
