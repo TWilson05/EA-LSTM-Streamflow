@@ -2,7 +2,7 @@
 
 # --- SLURM CONFIGURATION ---
 #SBATCH --job-name=ealstm_streamflow_run       # Job name (shows up in queue)
-#SBATCH --time=12:00:00                        # Max run time (HH:MM:SS) - 12 hours is safe
+#SBATCH --time=24:00:00                        # Max run time (HH:MM:SS) - 12 hours is safe
 #SBATCH --nodes=1                              # We only need 1 computer node
 #SBATCH --ntasks=1                             # We run 1 main task
 #SBATCH --cpus-per-task=4                      # CPU cores (Matches num_workers in loader)

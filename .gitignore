@@ -7,6 +7,7 @@
 *.prj
 *.shp
 *.shx
+*.qpj
 # gridded data products
 *.nc
 *.grib
@@ -20,6 +21,6 @@
 # python related files
 __pycache__
 *.egg-info
-venv
+*venv
 # environment files
 *.env

@@ -2,6 +2,8 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import rasterio
+from rasterio.transform import Affine
+import xarray as xr
 import warnings
 from rasterstats import zonal_stats
 from src.config import (
@@ -10,7 +12,8 @@ from src.config import (
     GLACIER_SHP_PATH,
     MASS_BALANCE_PATH,
     OUTPUT_STATIC_ATTR,
-    OUTPUT_GLACIER_VOL
+    OUTPUT_GLACIER_VOL,
+    RAW_DATA_DIR # Added to locate lake_cover.nc
 )
 
 # Standard Equal Area projection for Western Canada
@@ -42,41 +45,72 @@ def generate_slope_raster(dem_path, slope_path):
             for i in range(0, height, chunk_size):
                 for j in range(0, width, chunk_size):
                     
-                    # Define the window boundaries, preventing out-of-bounds at the edges
                     w = min(chunk_size, width - j)
                     h = min(chunk_size, height - i)
                     window = rasterio.windows.Window(j, i, w, h)
                     
-                    # Read chunk and cast to float
                     elev = src.read(1, window=window).astype(np.float32)
                     
-                    # 1. Mask Nodata to NaN BEFORE gradient calculation
                     if src.nodata is not None:
                         elev[elev == src.nodata] = np.nan
                         
-                    # 2. Calculate Gradient
                     if h < 2 or w < 2:
                         slope = np.zeros_like(elev)
                     else:
                         dy_grad, dx_grad = np.gradient(elev, dy, dx)
                         slope = np.arctan(np.sqrt(dx_grad**2 + dy_grad**2)) * (180.0 / np.pi)
                     
-                    # 3. Restore Nodata mask for saving
                     slope[np.isnan(slope)] = -9999.0
-                    
                     dst.write(slope.astype(rasterio.float32), 1, window=window)
                     
     print(f"   ✅ Saved slope raster to {slope_path}")
     return slope_path
 
+def get_lake_cover_stats(basins_gdf, nc_path):
+    """
+    Extracts mean lake cover fraction from an ERA5 NetCDF file for each basin.
+    """
+    if not nc_path.exists():
+        print(f"   ⚠️ Warning: Lake cover file not found at {nc_path}. Filling with 0.")
+        return [0.0] * len(basins_gdf)
+
+    with xr.open_dataset(nc_path, engine='netcdf4') as ds:
+        lat_name = next((v for v in ['latitude', 'lat'] if v in ds.coords), None)
+        lon_name = next((v for v in ['longitude', 'lon'] if v in ds.coords), None)
+        # Typically 'cl' or 'lake_cover'
+        var_name = next((v for v in ds.data_vars), None) 
+        
+        lats = ds[lat_name].values
+        lons = ds[lon_name].values
+        data = ds[var_name].values
+
+        # ERA5 longitudes are often 0-360. Convert to -180 to 180
+        if lons.max() > 180:
+            lons = np.where(lons > 180, lons - 360, lons)
+
+        # Drop time dimension if it exists (assuming static file shape is 1, lat, lon)
+        if data.ndim == 3:
+            data = data[0]
+
+        # Calculate Affine transform for rasterstats
+        # ERA5 typically has descending latitudes and ascending longitudes
+        dlon = lons[1] - lons[0]
+        dlat = lats[1] - lats[0] 
+        transform = Affine.translation(lons[0] - dlon/2, lats[0] - dlat/2) * Affine.scale(dlon, dlat)
+
+        # Reproject basins to Lat/Lon to match ERA5
+        basins_4326 = basins_gdf.to_crs("EPSG:4326")
+        
+        # Calculate mean lake cover
+        stats = zonal_stats(basins_4326, data, affine=transform, stats="mean", nodata=np.nan)
+        
+        # Multiply by 100 to make it a percentage (matching glacier_pct)
+        return [s['mean'] * 100 if s['mean'] is not None else 0.0 for s in stats]
+
 def process_spatial_attributes(stations_list):
     """
-    Computes static attributes and glacier volume changes using:
-    1. Pre-downloaded DEM (ELEVATION_DIR/western_canada_dem.tif)
-    2. Basin Shapefiles (DRAINAGE_FILES)
-    3. Glacier Shapefiles (GLACIER_SHP_PATH)
+    Computes static attributes and glacier volume changes.
     """
-    
     # --- 1. Load Basins ---
     print("⏳ Loading and merging basin files...")
     basins_list = []
@@ -97,8 +131,6 @@ def process_spatial_attributes(stations_list):
         raise RuntimeError("No basin files loaded.")
 
     gdf_basins = pd.concat(basins_list, ignore_index=True)
-    
-    # Filter to requested stations
     gdf_basins['station_id'] = gdf_basins['station_id'].astype(str).str.strip()
     requested_stations = set([s.strip() for s in stations_list])
     gdf_basins = gdf_basins[gdf_basins['station_id'].isin(requested_stations)].copy()
@@ -112,34 +144,35 @@ def process_spatial_attributes(stations_list):
     if not dem_path.exists():
         raise FileNotFoundError(f"❌ DEM not found at {dem_path}. Run data_ingestion.download_aws_dem first!")
 
-    # Generate slope raster if it doesn't exist yet
     generate_slope_raster(dem_path, slope_path)
 
-    # Reproject Basins to DEM CRS (EPSG:3857 for AWS tiles)
     basins_proj = gdf_basins.to_crs("EPSG:3857")
     
-    # Calculate Elevation Stats (Mean & Std)
-    elev_stats = zonal_stats(basins_proj, str(dem_path), stats="mean std")
+    elev_stats = zonal_stats(basins_proj, str(dem_path), stats="mean min max range")
     gdf_basins['mean_elev'] = [s['mean'] for s in elev_stats]
-    gdf_basins['std_elev'] = [s['std'] for s in elev_stats]
+    gdf_basins['min_elev'] = [s['min'] for s in elev_stats]
+    gdf_basins['max_elev'] = [s['max'] for s in elev_stats]
+    gdf_basins['elev_range'] = [s['range'] for s in elev_stats]
 
-    # Calculate Slope Stats (Mean & Std)
-    slope_stats = zonal_stats(basins_proj, str(slope_path), stats="mean std")
+    slope_stats = zonal_stats(basins_proj, str(slope_path), stats="mean")
     gdf_basins['mean_slope'] = [s['mean'] for s in slope_stats]
-    gdf_basins['std_slope'] = [s['std'] for s in slope_stats]
 
-    # Fill Missing Data with medians across all stations
-    for col in ['mean_elev', 'std_elev', 'mean_slope', 'std_slope']:
+    for col in ['mean_elev', 'min_elev', 'max_elev', 'elev_range', 'mean_slope']:
         missing = gdf_basins[col].isna().sum()
         if missing > 0:
             print(f"   ⚠️ Warning: {missing} basins missing {col}. Filling with median.")
             gdf_basins[col] = gdf_basins[col].fillna(gdf_basins[col].median())
 
-    # --- 3. Compute Areas (Reproject to Albers) ---
+    # --- 3. Compute Lake Cover ---
+    print("⏳ Computing Lake Cover...")
+    lake_nc_path = RAW_DATA_DIR / "lake_cover.nc"
+    gdf_basins['lake_cover_pct'] = get_lake_cover_stats(gdf_basins, lake_nc_path)
+
+    # --- 4. Compute Areas (Reproject to Albers) ---
     gdf_basins = gdf_basins.to_crs(CANADA_ALBERS_CRS)
     gdf_basins['basin_area_km2'] = gdf_basins.geometry.area / 1e6
 
-    # --- 4. Glacier Intersection ---
+    # --- 5. Glacier Intersection ---
     print("⏳ Intersecting Glaciers...")
     gdf_glaciers = gpd.read_file(GLACIER_SHP_PATH)
     rgi_col = next((c for c in gdf_glaciers.columns if 'rgiid' in c.lower()), 'RGIId')
@@ -153,12 +186,13 @@ def process_spatial_attributes(stations_list):
     )
     intersection['glacier_area_km2'] = intersection.geometry.area / 1e6
 
-    # --- 5. Save Static Attributes ---
+    # --- 6. Save Static Attributes ---
     glacier_sums = intersection.groupby('station_id')['glacier_area_km2'].sum()
     
     # Update dataframe to include the new columns
     static_df = gdf_basins[[
-        'station_id', 'basin_area_km2', 'mean_elev', 'std_elev', 'mean_slope', 'std_slope'
+        'station_id', 'basin_area_km2', 'mean_elev', 'min_elev', 
+        'max_elev', 'elev_range', 'mean_slope', 'lake_cover_pct'
     ]].set_index('station_id')
     
     static_df['glacier_area_km2'] = glacier_sums
@@ -168,7 +202,7 @@ def process_spatial_attributes(stations_list):
     static_df.to_csv(OUTPUT_STATIC_ATTR)
     print(f"✅ Static attributes saved to {OUTPUT_STATIC_ATTR}")
 
-    # --- 6. Compute Volume Change ---
+    # --- 7. Compute Volume Change ---
     print("⏳ Calculating volume changes...")
     area_matrix = intersection.pivot_table(
         index='RGIId', columns='station_id', values='glacier_area_km2', 
