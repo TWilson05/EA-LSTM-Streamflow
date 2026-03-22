@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+# Require the user to specify the experiment name
+if [ -z "$1" ]; then
+    echo "Error: You must provide an experiment name!"
+    echo "Usage: ./submit.sh <experiment_name>"
+    echo "Valid options: baseline, topographic, phase-split"
+    exit 1
+fi
+
+EXP_NAME=$1
+
 # 1. Load Secrets
 if [ -f "secrets.env" ]; then
     # Silent fix: Remove \r characters if they exist
@@ -19,11 +29,9 @@ if [ ! -d "logs" ]; then
 fi
 
 # 3. Submit to SLURM
-# We pass the secrets as overrides (--account, --mail-user)
-# We execute from the current directory
-echo "Submitting job for account: $ACCOUNT"
+echo "Submitting 10-member ensemble job for experiment: $EXP_NAME"
 
 sbatch \
     --account=$ACCOUNT \
     --mail-user=$EMAIL \
-    hpc/job.sh
+    hpc/job.sh $EXP_NAME
