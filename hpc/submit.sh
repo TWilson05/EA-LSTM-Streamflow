@@ -34,4 +34,5 @@ echo "Submitting 10-member ensemble job for experiment: $EXP_NAME"
 sbatch \
     --account=$ACCOUNT \
     --mail-user=$EMAIL \
-    hpc/job.sh $EXP_NAME
+    --export=ALL,EXP_NAME=$EXP_NAME \
+    hpc/job.sh

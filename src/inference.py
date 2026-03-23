@@ -8,7 +8,7 @@ from src.data_utils import load_raw_csvs, align_and_filter, load_scalers, normal
 
 SEQUENCE_LENGTH = 365
 
-def predict_and_save_full_results(model, device, output_file, dynamic_cols, static_cols, batch_size=256, force_zero_glacier=False):
+def predict_and_save_full_results(model, device, output_file, dynamic_cols, static_cols, exp_name, batch_size=256, force_zero_glacier=False):
     """
     Generates predictions for the ENTIRE dataset (Train + Val + Test) and saves to CSV.
     Rows: Dates, Columns: Station IDs.
@@ -22,7 +22,7 @@ def predict_and_save_full_results(model, device, output_file, dynamic_cols, stat
     )
     
     # 2. Load Scalers
-    scaler_path = MODELS_DIR / "scalers.json"
+    scaler_path = MODELS_DIR / f"{exp_name}_scalers.json"
     scalers = load_scalers(scaler_path)
     
     # 3. Normalize Dynamic Features
@@ -40,8 +40,7 @@ def predict_and_save_full_results(model, device, output_file, dynamic_cols, stat
     stat_norm = normalize(stat_vals, scalers['stat_mean'], scalers['stat_std'])
     
     # 5. Define Full Dataset Indices
-    # --- CHANGED: Now spans from the start of training to the end of testing ---
-    full_mask = (master_index >= DATA_START_YEAR) & (master_index <= DATA_END_YEAR)
+    full_mask = (master_index.year >= DATA_START_YEAR) & (master_index.year <= DATA_END_YEAR)
     
     all_indices = np.arange(len(master_index))
     target_indices = all_indices[full_mask]

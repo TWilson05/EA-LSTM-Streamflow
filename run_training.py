@@ -50,6 +50,7 @@ def main():
     train_loader, val_loader, test_loader, stations = load_and_preprocess_data(
         dynamic_cols=DYNAMIC_FEATURES,
         static_cols=STATIC_FEATURES,
+        exp_name=args.exp_name,
         sequence_length=365,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKERS
@@ -91,13 +92,14 @@ def main():
     print(f"\n--- Final Evaluation: Member {args.member_id} ---")
     model.load_state_dict(torch.load(member_model_path, weights_only=True))
 
-    test_loss = evaluate(model, test_loader, DEVICE)
-    print(f"Test Set Basin-Averaged Loss: {test_loss:.4f}")
+    # test_loss = evaluate(model, test_loader, DEVICE)
+    # print(f"Test Set Basin-Averaged Loss: {test_loss:.4f}")
 
     print("Generating Standard Predictions CSV...")
     predict_and_save_full_results(
         model, DEVICE, output_file=member_pred_path,
         dynamic_cols=DYNAMIC_FEATURES, static_cols=STATIC_FEATURES,
+        exp_name=args.exp_name,
         batch_size=BATCH_SIZE, force_zero_glacier=False
     )
 
@@ -106,6 +108,7 @@ def main():
         predict_and_save_full_results(
             model, DEVICE, output_file=member_cf_path,
             dynamic_cols=DYNAMIC_FEATURES, static_cols=STATIC_FEATURES,
+            exp_name=args.exp_name,
             batch_size=BATCH_SIZE, force_zero_glacier=True
         )
 
