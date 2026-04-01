@@ -12,6 +12,10 @@ EXPERIMENT_CONFIGS = {
         "dynamic": ['temp_max', 'temp_min', 'precip'],
         "static":  ['glacier_pct']
     },
+    "area": {
+        "dynamic": ['temp_max', 'temp_min', 'precip'],
+        "static":  ['basin_area_km2', 'glacier_pct']
+    },
     "topographic": {
         "dynamic": ['temp_max', 'temp_min', 'precip'],
         "static":  ['basin_area_km2', 'mean_elev', 'elev_range', 'mean_slope', 'glacier_pct']

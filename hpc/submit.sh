@@ -5,7 +5,7 @@ set -e
 if [ -z "$1" ]; then
     echo "Error: You must provide an experiment name!"
     echo "Usage: ./submit.sh <experiment_name>"
-    echo "Valid options: baseline, topographic, phase-split"
+    echo "Valid options: baseline, area, topographic, phase-split"
     exit 1
 fi
 
