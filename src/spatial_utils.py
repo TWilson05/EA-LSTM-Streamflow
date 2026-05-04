@@ -2,8 +2,6 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 import rasterio
-from rasterio.transform import Affine
-import xarray as xr
 import warnings
 from rasterstats import zonal_stats
 from src.config import (
@@ -12,8 +10,7 @@ from src.config import (
     GLACIER_SHP_PATH,
     MASS_BALANCE_PATH,
     OUTPUT_STATIC_ATTR,
-    OUTPUT_GLACIER_VOL,
-    RAW_DATA_DIR # Added to locate lake_cover.nc
+    OUTPUT_GLACIER_VOL
 )
 
 # Standard Equal Area projection for Western Canada
@@ -66,46 +63,6 @@ def generate_slope_raster(dem_path, slope_path):
     print(f"   ✅ Saved slope raster to {slope_path}")
     return slope_path
 
-def get_lake_cover_stats(basins_gdf, nc_path):
-    """
-    Extracts mean lake cover fraction from an ERA5 NetCDF file for each basin.
-    """
-    if not nc_path.exists():
-        print(f"   ⚠️ Warning: Lake cover file not found at {nc_path}. Filling with 0.")
-        return [0.0] * len(basins_gdf)
-
-    with xr.open_dataset(nc_path, engine='netcdf4') as ds:
-        lat_name = next((v for v in ['latitude', 'lat'] if v in ds.coords), None)
-        lon_name = next((v for v in ['longitude', 'lon'] if v in ds.coords), None)
-        # Typically 'cl' or 'lake_cover'
-        var_name = next((v for v in ds.data_vars), None) 
-        
-        lats = ds[lat_name].values
-        lons = ds[lon_name].values
-        data = ds[var_name].values
-
-        # ERA5 longitudes are often 0-360. Convert to -180 to 180
-        if lons.max() > 180:
-            lons = np.where(lons > 180, lons - 360, lons)
-
-        # Drop time dimension if it exists (assuming static file shape is 1, lat, lon)
-        if data.ndim == 3:
-            data = data[0]
-
-        # Calculate Affine transform for rasterstats
-        # ERA5 typically has descending latitudes and ascending longitudes
-        dlon = lons[1] - lons[0]
-        dlat = lats[1] - lats[0] 
-        transform = Affine.translation(lons[0] - dlon/2, lats[0] - dlat/2) * Affine.scale(dlon, dlat)
-
-        # Reproject basins to Lat/Lon to match ERA5
-        basins_4326 = basins_gdf.to_crs("EPSG:4326")
-        
-        # Calculate mean lake cover
-        stats = zonal_stats(basins_4326, data, affine=transform, stats="mean", nodata=np.nan)
-        
-        # Multiply by 100 to make it a percentage (matching glacier_pct)
-        return [s['mean'] * 100 if s['mean'] is not None else 0.0 for s in stats]
 
 def process_spatial_attributes(stations_list):
     """
@@ -157,42 +114,62 @@ def process_spatial_attributes(stations_list):
     slope_stats = zonal_stats(basins_proj, str(slope_path), stats="mean")
     gdf_basins['mean_slope'] = [s['mean'] for s in slope_stats]
 
+    # --- BATHYMETRY FIX ---
+    # Coastal basins overlapping the ocean will pick up negative bathymetry values. 
+    # We clip anything below 0 back to sea level.
+    for col in ['min_elev', 'mean_elev']:
+        gdf_basins[col] = gdf_basins[col].clip(lower=0.0)
+        
+    # --- RANGE CORRECTION ---
+    # Recalculate elevation range to reflect the new clipped minimum
+    gdf_basins['elev_range'] = gdf_basins['max_elev'] - gdf_basins['min_elev']
+
     for col in ['mean_elev', 'min_elev', 'max_elev', 'elev_range', 'mean_slope']:
         missing = gdf_basins[col].isna().sum()
         if missing > 0:
             print(f"   ⚠️ Warning: {missing} basins missing {col}. Filling with median.")
             gdf_basins[col] = gdf_basins[col].fillna(gdf_basins[col].median())
 
-    # --- 3. Compute Lake Cover ---
-    print("⏳ Computing Lake Cover...")
-    lake_nc_path = RAW_DATA_DIR / "lake_cover.nc"
-    gdf_basins['lake_cover_pct'] = get_lake_cover_stats(gdf_basins, lake_nc_path)
-
-    # --- 4. Compute Areas (Reproject to Albers) ---
+    # --- 3. Compute Areas (Reproject to Albers) ---
     gdf_basins = gdf_basins.to_crs(CANADA_ALBERS_CRS)
     gdf_basins['basin_area_km2'] = gdf_basins.geometry.area / 1e6
 
-    # --- 5. Glacier Intersection ---
-    print("⏳ Intersecting Glaciers...")
+    # --- 4. Fast Glacier Intersection ---
+    print("⏳ Intersecting Glaciers (Optimized sjoin method)...")
     gdf_glaciers = gpd.read_file(GLACIER_SHP_PATH)
     rgi_col = next((c for c in gdf_glaciers.columns if 'rgiid' in c.lower()), 'RGIId')
     gdf_glaciers = gdf_glaciers.rename(columns={rgi_col: 'RGIId'})
     gdf_glaciers = gdf_glaciers.to_crs(CANADA_ALBERS_CRS)
 
-    intersection = gpd.overlay(
-        gdf_glaciers[['RGIId', 'geometry']], 
-        gdf_basins[['station_id', 'geometry']], 
-        how='intersection'
-    )
-    intersection['glacier_area_km2'] = intersection.geometry.area / 1e6
+    gdf_glaciers['geometry'] = gdf_glaciers.geometry.simplify(10.0)
+    basins_simplified = gdf_basins.copy()
+    basins_simplified['geometry'] = basins_simplified.geometry.simplify(10.0)
 
-    # --- 6. Save Static Attributes ---
+    candidates = gpd.sjoin(
+        gdf_glaciers[['RGIId', 'geometry']], 
+        basins_simplified[['station_id', 'geometry']], 
+        how='inner', 
+        predicate='intersects'
+    )
+
+    candidates = candidates.merge(
+        basins_simplified[['station_id', 'geometry']], 
+        on='station_id', 
+        suffixes=('_glac', '_basin')
+    )
+
+    glac_geoms = gpd.GeoSeries(candidates['geometry_glac'])
+    basin_geoms = gpd.GeoSeries(candidates['geometry_basin'])
+    candidates['glacier_area_km2'] = glac_geoms.intersection(basin_geoms).area / 1e6
+    intersection = candidates[['RGIId', 'station_id', 'glacier_area_km2']]
+
+    # --- 5. Save Static Attributes ---
     glacier_sums = intersection.groupby('station_id')['glacier_area_km2'].sum()
     
-    # Update dataframe to include the new columns
+    # Update dataframe to reflect the removed lake_cover column
     static_df = gdf_basins[[
         'station_id', 'basin_area_km2', 'mean_elev', 'min_elev', 
-        'max_elev', 'elev_range', 'mean_slope', 'lake_cover_pct'
+        'max_elev', 'elev_range', 'mean_slope'
     ]].set_index('station_id')
     
     static_df['glacier_area_km2'] = glacier_sums
@@ -202,7 +179,7 @@ def process_spatial_attributes(stations_list):
     static_df.to_csv(OUTPUT_STATIC_ATTR)
     print(f"✅ Static attributes saved to {OUTPUT_STATIC_ATTR}")
 
-    # --- 7. Compute Volume Change ---
+    # --- 6. Compute Volume Change ---
     print("⏳ Calculating volume changes...")
     area_matrix = intersection.pivot_table(
         index='RGIId', columns='station_id', values='glacier_area_km2', 
