@@ -149,21 +149,33 @@ def process_spatial_attributes(stations_list):
     print("⏳ Merging Station Coordinates...")
     try:
         metadata_df = pd.read_csv(STATION_METADATA_PATH)
-        id_col = next((c for c in metadata_df.columns if c.lower() in ['station_id', 'id', 'stationnum']), None)
-        lat_col = next((c for c in metadata_df.columns if c.lower() in ['lat', 'latitude']), None)
-        lon_col = next((c for c in metadata_df.columns if c.lower() in ['lon', 'long', 'longitude']), None)
         
-        if id_col and lat_col and lon_col:
+        # We know the exact column names, so we just declare them directly
+        id_col = 'Station Number'
+        lat_col = 'Latitude'
+        lon_col = 'Longitude'
+        
+        # Verify those columns actually exist in the CSV to prevent crashes
+        missing_cols = [col for col in [id_col, lat_col, lon_col] if col not in metadata_df.columns]
+        
+        if not missing_cols:
+            # Clean the IDs to ensure they match perfectly (removes invisible spaces)
             metadata_df[id_col] = metadata_df[id_col].astype(str).str.strip()
+            
             gdf_basins = gdf_basins.merge(
                 metadata_df[[id_col, lat_col, lon_col]], 
                 left_on='station_id', right_on=id_col, how='left'
             )
+            
+            # Rename for standardization across your project
             gdf_basins = gdf_basins.rename(columns={lat_col: 'latitude', lon_col: 'longitude'})
+            
+            # Drop the duplicate ID column we just merged in
             if id_col != 'station_id':
                 gdf_basins = gdf_basins.drop(columns=[id_col])
         else:
-            print("   ⚠️ Could not identify ID, Lat, or Lon columns in metadata.")
+            print(f"   ⚠️ Could not find these exact columns in the metadata: {missing_cols}")
+            
     except Exception as e:
         print(f"   ⚠️ Failed to load or merge metadata: {e}")
 
