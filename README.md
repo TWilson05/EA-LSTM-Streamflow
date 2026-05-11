@@ -15,6 +15,64 @@ Before training on the cluster, data must be downloaded and preprocessed locally
    * Note: This notebook downloads ERA5 reanalysis data which can take a significant amount of time depending on the server queues.
    * Outcome: This generates the lightweight CSVs in `data/processed/` required for training.
 
+## File Tree
+````
+EA-LSTM_Streamflow/
+├── data/
+│   ├── output/
+│   │   ├── area/
+│   │   ├── baseline/
+│   │   ├── phase_split/
+│   │   ├── phase_split_old/
+│   │   └── topographic/
+│   ├── processed/
+│   │   ├── climate/
+│   │   │   ├── daily_fraction_below_zero.csv
+│   │   │   ├── daily_precipitation.csv
+│   │   │   ├── daily_rainfall.csv
+│   │   │   ├── daily_snowfall.csv
+│   │   │   ├── daily_temp_max.csv
+│   │   │   └── daily_temp_min.csv
+│   │   ├── combined_streamflow.csv
+│   │   ├── glacier_volume_change.csv
+│   │   └── static_attributes.csv
+│   └── raw/
+│       ├── dem_data/
+│       ├── drainage_areas/
+│       ├── era5/
+│       │   ├── precipitation/
+│       │   └── temperature/
+│       ├── mass_balance/
+│       │   └── ts_monthly_const_area_lstm.csv
+│       └── RGI-western-canada/
+├── hpc/
+│   ├── job.sh
+│   ├── setup_env.sh
+│   └── submit.sh
+├── models/
+├── notebooks/
+├── src/
+│   ├── __init__.py
+│   ├── climate.py
+│   ├── config.py
+│   ├── data_ingestion.py
+│   ├── data_utils.py
+│   ├── dataset.py
+│   ├── inference.py
+│   ├── models.py
+│   ├── processing.py
+│   ├── spatial_utils.py
+│   └── training.py
+├── .gitignore
+├── bundle_project.py
+├── postprocessing_requirements.txt
+├── README.md
+├── requirements.txt
+├── run_training.py
+├── secrets.env
+└── setup.py
+````
+
 ## High Performance Compute Setup (UBC ARC Sockeye)
 To train the EA-LSTM model, this project utilized UBC ARC Sockeye. The following steps can be followed to set up this project on Sockeye:
 
