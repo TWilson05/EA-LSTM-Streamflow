@@ -6,7 +6,7 @@ import rasterio
 import urllib.parse
 import pandas as pd
 from rasterio.merge import merge
-from src.config import PROCESSED_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, ERA5_RAD_DIR, SPATIAL_BOUNDS, ELEVATION_DIR, LAKE_COVER
+from src.config import PROCESSED_DATA_DIR, ERA5_PRECIP_DIR, ERA5_TEMP_DIR, ERA5_RAD_DIR, SPATIAL_BOUNDS, ELEVATION_DIR
 
 bounds = pd.read_csv(SPATIAL_BOUNDS)
 
@@ -105,26 +105,6 @@ def download_era5_precipitation(years):
 
 def download_era5_solar_rad(years):
     download_era5_land("surface_solar_radiation_downwards", "era5_rad", ERA5_RAD_DIR, years)
-
-def download_era5_lakes():
-    """Downloads a static lake cover mask"""
-    client = get_cds_client()
-    dataset = "reanalysis-era5-land"
-
-    if LAKE_COVER.exists():
-        print("✔ Skipping lake cover download (already exists)")
-    else:
-        request = {
-            "variable": ["lake_cover"],
-            "data_format": "netcdf",
-            "download_format": "unarchived"
-        }
-
-        try:
-            print("⏳ Downloading lake cover ...")
-            client.retrieve(dataset, request, str(LAKE_COVER))
-        except Exception as e:
-            print(f"❌ Failed to download lake cover: {e}")
 
 def latlon_to_tile(lat, lon, zoom):
     """Converts Lat/Lon to Web Mercator XYZ tile coordinates."""

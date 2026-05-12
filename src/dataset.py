@@ -30,7 +30,7 @@ class LazyStreamflowDataset(Dataset):
                 torch.tensor([self.y[t, s]]).float(),
                 torch.tensor([self.basin_stds[s]]).float())
  
-def load_and_preprocess_data(dynamic_cols, static_cols, sequence_length=365, batch_size=256, num_workers=0):
+def load_and_preprocess_data(dynamic_cols, static_cols, exp_name, sequence_length=365, batch_size=256, num_workers=0):
     print("⏳ Loading Data...")
     
     # 1. Load and Align
@@ -62,10 +62,11 @@ def load_and_preprocess_data(dynamic_cols, static_cols, sequence_length=365, bat
     basin_stds[basin_stds < 1e-4] = 1.0
     
     # Pass the dynamic static_cols variable instead of the hardcoded list
+    scaler_path = MODELS_DIR / f"{exp_name}_scalers.json"
     scalers = compute_and_save_scalers(train_dyn,
                                        stat_vals,
                                        basin_stds,
-                                       MODELS_DIR / "scalers.json",
+                                       scaler_path,
                                        static_cols)
     
     # 6. Apply Normalization

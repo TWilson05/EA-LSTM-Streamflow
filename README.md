@@ -15,6 +15,79 @@ Before training on the cluster, data must be downloaded and preprocessed locally
    * Note: This notebook downloads ERA5 reanalysis data which can take a significant amount of time depending on the server queues.
    * Outcome: This generates the lightweight CSVs in `data/processed/` required for training.
 
+## File Tree
+````
+EA-LSTM-Streamflow/
+├── data/
+│   ├── output/
+│   │   ├── area/
+│   │   ├── baseline/
+│   │   ├── phase_split/
+│   │   └── topographic/
+│   ├── processed/
+│   │   ├── climate/
+│   │   │   ├── daily_fraction_below_zero.csv
+│   │   │   ├── daily_precipitation.csv
+│   │   │   ├── daily_rainfall.csv
+│   │   │   ├── daily_snowfall.csv
+│   │   │   ├── daily_temp_max.csv
+│   │   │   └── daily_temp_min.csv
+│   │   ├── combined_streamflow.csv
+│   │   ├── glacier_volume_change.csv
+│   │   └── static_attributes.csv
+│   └── raw/
+│       ├── dem_data/
+│       ├── drainage_areas/
+│       ├── era5/
+│       │   ├── precipitation/
+│       │   └── temperature/
+│       ├── mass_balance/
+│       │   └── ts_monthly_const_area_lstm.csv
+│       ├── RGI-western-canada/
+│       ├── spatial_bounds.csv
+│       └── station_metadata.csv
+├── hpc/
+│   ├── job.sh
+│   ├── setup_env.sh
+│   └── submit.sh
+├── models/
+│   ├── area/
+│   ├── baseline/
+│   ├── phase-split/
+│   └── topographic/
+├── notebooks/
+│   ├── 01_data_preprocessing.ipynb
+│   ├── 02_data_postprocessing.ipynb
+│   └── EXP_* (experimental analysis notebooks)
+├── src/
+│   ├── __init__.py
+│   ├── climate.py
+│   ├── config.py
+│   ├── data_ingestion.py
+│   ├── data_utils.py
+│   ├── dataset.py
+│   ├── inference.py
+│   ├── models.py
+│   ├── processing.py
+│   ├── spatial_utils.py
+│   └── training.py
+├── .gitignore
+├── bundle_project.py
+├── postprocessing_requirements.txt
+├── README.md
+├── requirements.txt
+├── run_training.py
+├── secrets.env
+└── setup.py
+````
+**Files of particular note:**
+* `data/processed/combined_streamflow.csv`: this is the ground-truth streamflow data in units of $m^3/s$. Note that there will be some gaps in this data.
+* `data/processed/glacier_volume_change.csv`: this is the monthly changes in mass balance from the mass balance model aggregated for each station. Units are in millions of cubic meters of water (MCM).
+* `data/processed/static_attributes.csv`: this is the values of static variables for each station. Area is in units of $km^2$, elevation is in $m$, and slope is unitless.
+* `data/processed/climate/`: this folder contains CSV files of the dynamic variables, structured in the same way as `combined_streamflow.csv`. Temperature has units of degrees celcius while precipitation variables are in units of millimeters averaged over the basin.
+* `data/output` contains daily predictions for each model, structured in the same manner as `combined_streamflow` except using units of millimeters over the basin area.
+* `src/config.py` is used to consistantly reference common files and directories. Include this in your import statment when developing code or performing analysis. `from src.config import ___`.
+
 ## High Performance Compute Setup (UBC ARC Sockeye)
 To train the EA-LSTM model, this project utilized UBC ARC Sockeye. The following steps can be followed to set up this project on Sockeye:
 
@@ -61,11 +134,7 @@ To train the EA-LSTM model, this project utilized UBC ARC Sockeye. The following
 ### Monitoring and Results
 * **Check Status:** Run `squeue -u <cwl>` to see your job in the queue.
 * **View Logs:** Once running, track progress live: `tail -f logs/train_*.out`
-* **Retrieve Results:** After training, download the predictions to your local machine:
-  ```
-  scp <cwl>@sockeye.arc.ubc.ca:/scratch/<alloc-code>/ealstm_project/data/processed/test_set_predictions.csv ./data/processed/
-  ```
-7. **Retrieving Results**
+* **Retrieve Results:**
    Once the job status has changed to `COMPLETED`, you can download the trained model and predictions to your local machine.
    The following code will download the necessary files produced.
    ```bash
@@ -74,5 +143,5 @@ To train the EA-LSTM model, this project utilized UBC ARC Sockeye. The following
    ```
    ```
    # download saved model
-   scp -r <cwl>@sockeye.arc.ubc.ca:/scratch/<alloc-code>/ealstm_project/models/ ./
+   scp -r <cwl>@sockeye.arc.ubc.ca:/scratch/<alloc-code>/ealstm_project/models/ ./models/
    ```
