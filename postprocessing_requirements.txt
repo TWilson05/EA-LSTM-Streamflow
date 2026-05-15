@@ -1,0 +1,8 @@
+# general requirements
+pandas
+numpy
+# plotting and benchmarking
+matplotlib
+cartopy
+scikit-learn
+seaborn

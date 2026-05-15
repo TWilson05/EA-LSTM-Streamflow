@@ -1,6 +1,7 @@
 # tabular data files
 *.csv
 *.txt
+!*requirements.txt
 # geospatial data files
 *.gpkg
 *.dbf
