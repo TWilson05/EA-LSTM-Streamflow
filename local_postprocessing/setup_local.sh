@@ -87,6 +87,12 @@ else
   echo "Jupyter kernel already exists."
 fi
 
+# Installing everything to get the kernel to pickup the env
+echo ""
+echo "Installing the environment for pip"
+pip install -e .
+echo ""
+
 echo ""
 echo "Setup complete!"
 echo ""

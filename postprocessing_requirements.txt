@@ -6,3 +6,4 @@ matplotlib
 cartopy
 scikit-learn
 seaborn
+scipy
