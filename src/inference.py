@@ -79,6 +79,7 @@ def predict_and_save_full_results(model, device, output_file, dynamic_cols, stat
     # 7. Build and Save
     print("   Constructing DataFrame...")
     df_results = pd.DataFrame(results_dict, index=valid_dates)
+    df_results.index.name = 'Date'
     df_results.to_csv(output_file)
     print(f"✅ Predictions saved to {output_file}")
     
