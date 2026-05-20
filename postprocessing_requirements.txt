@@ -7,3 +7,6 @@ cartopy
 scikit-learn
 seaborn
 scipy
+statsmodels
+# testing
+pymannkendall==1.4.3
