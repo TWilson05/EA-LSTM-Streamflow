@@ -4,13 +4,14 @@ import numpy as np
 import rasterio
 from rasterio.mask import mask
 import warnings
+from pathlib import Path
 
 # Use your exact config setup
 from src.config import (
     DRAINAGE_FILES, 
     ELEVATION_DIR, 
     GLACIER_SHP_PATH,
-    MASS_BALANCE_PATH,
+    MASS_BALANCE_FILES, 
     OUTPUT_STATIC_ATTR,
     OUTPUT_GLACIER_VOL,
     RAW_DATA_DIR
@@ -61,33 +62,26 @@ def process_spatial_attributes(stations_list):
     }
 
     with rasterio.open(dem_raw) as src:
-        # Match basins to the exact projection of the DEM
         basins_proj = gdf_basins.to_crs(src.crs)
         dx, dy = src.res
 
-        # Suppress Numpy runtime warnings for empty arrays (e.g. perfectly flat basins)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
             
             for idx, row in basins_proj.iterrows():
                 try:
-                    # 1. Cookie-cutter the DEM to exactly this basin's boundary
-                    # Everything outside the basin becomes 'nodata'
                     out_image, _ = mask(src, [row.geometry], crop=True)
                     elev = out_image[0].astype(np.float32)
 
-                    # 2. Scrub Bathymetry and Nodata
                     if src.nodata is not None:
                         elev[elev == src.nodata] = np.nan
-                    elev[elev < 0] = np.nan  # Drop the ocean floor
+                    elev[elev < 0] = np.nan  
 
-                    # Check if the basin successfully captured data
                     valid_mask = ~np.isnan(elev)
                     if not valid_mask.any():
                         for k in stats: stats[k].append(np.nan)
                         continue
 
-                    # 3. Compute Elevation Stats instantly from the RAM array
                     valid_elev = elev[valid_mask]
                     stats['mean_elev'].append(np.mean(valid_elev))
                     stats['min_elev'].append(np.min(valid_elev))
@@ -97,7 +91,6 @@ def process_spatial_attributes(stations_list):
                     stats['lower_quartile_elev'].append(np.percentile(valid_elev, 25))
                     stats['upper_quartile_elev'].append(np.percentile(valid_elev, 75))
 
-                    # 4. Compute Topography Math in RAM
                     dy_grad, dx_grad = np.gradient(elev, dy, dx)
                     
                     slope_arr = np.arctan(np.sqrt(dx_grad**2 + dy_grad**2)) * (180.0 / np.pi)
@@ -110,22 +103,18 @@ def process_spatial_attributes(stations_list):
                     north_arr = ((aspect_deg >= 315) | (aspect_deg < 45)).astype(np.float32)
                     south_arr = ((aspect_deg >= 135) & (aspect_deg < 225)).astype(np.float32)
 
-                    # Apply Flat Mask (Drop slopes < 0.1 deg from aspect stats)
                     flat_mask = slope_arr < 0.1
                     sin_arr[flat_mask] = np.nan
                     cos_arr[flat_mask] = np.nan
                     north_arr[flat_mask] = np.nan
                     south_arr[flat_mask] = np.nan
 
-                    # 5. Extract Topo Stats
-                    # We use a combined mask because np.gradient creates a 1-pixel border of NaNs
                     valid_slope_mask = valid_mask & ~np.isnan(slope_arr)
                     
                     stats['mean_slope'].append(np.nanmean(slope_arr[valid_slope_mask]))
                     stats['mean_sin_aspect'].append(np.nanmean(sin_arr[valid_slope_mask]))
                     stats['mean_cos_aspect'].append(np.nanmean(cos_arr[valid_slope_mask]))
                     
-                    # Mean of binary array * 100 = Percentage
                     stats['north_facing_pct'].append(np.nanmean(north_arr[valid_slope_mask]) * 100)
                     stats['south_facing_pct'].append(np.nanmean(south_arr[valid_slope_mask]) * 100)
 
@@ -133,11 +122,9 @@ def process_spatial_attributes(stations_list):
                     print(f"   ⚠️ Error processing topography for basin {row['station_id']}: {e}")
                     for k in stats: stats[k].append(np.nan)
 
-    # Attach stats back to the main dataframe
     for k in stats:
         gdf_basins[k] = stats[k]
 
-    # Fill any straggling NaNs with medians
     topo_cols = list(stats.keys())
     for col in topo_cols:
         missing = gdf_basins[col].isna().sum()
@@ -150,16 +137,13 @@ def process_spatial_attributes(stations_list):
     try:
         metadata_df = pd.read_csv(STATION_METADATA_PATH)
         
-        # We know the exact column names, so we just declare them directly
         id_col = 'Station Number'
         lat_col = 'Latitude'
         lon_col = 'Longitude'
         
-        # Verify those columns actually exist in the CSV to prevent crashes
         missing_cols = [col for col in [id_col, lat_col, lon_col] if col not in metadata_df.columns]
         
         if not missing_cols:
-            # Clean the IDs to ensure they match perfectly (removes invisible spaces)
             metadata_df[id_col] = metadata_df[id_col].astype(str).str.strip()
             
             gdf_basins = gdf_basins.merge(
@@ -167,10 +151,8 @@ def process_spatial_attributes(stations_list):
                 left_on='station_id', right_on=id_col, how='left'
             )
             
-            # Rename for standardization across your project
             gdf_basins = gdf_basins.rename(columns={lat_col: 'latitude', lon_col: 'longitude'})
             
-            # Drop the duplicate ID column we just merged in
             if id_col != 'station_id':
                 gdf_basins = gdf_basins.drop(columns=[id_col])
         else:
@@ -179,12 +161,24 @@ def process_spatial_attributes(stations_list):
     except Exception as e:
         print(f"   ⚠️ Failed to load or merge metadata: {e}")
 
-    # --- 4. Compute Areas (Reproject to Albers) ---
+    # --- 4. Compute Areas and Reproject Gauge Points ---
     gdf_basins = gdf_basins.to_crs(CANADA_ALBERS_CRS)
     gdf_basins['basin_area_km2'] = gdf_basins.geometry.area / 1e6
 
-    # --- 5. Fast Glacier Intersection ---
-    print("⏳ Intersecting Glaciers (Optimized sjoin method)...")
+    if 'latitude' in gdf_basins.columns and 'longitude' in gdf_basins.columns:
+        valid_coords = gdf_basins['latitude'].notna() & gdf_basins['longitude'].notna()
+        points_4326 = gpd.points_from_xy(
+            gdf_basins.loc[valid_coords, 'longitude'], 
+            gdf_basins.loc[valid_coords, 'latitude']
+        )
+        points_gdf = gpd.GeoDataFrame(geometry=points_4326, crs="EPSG:4326")
+        points_albers = points_gdf.to_crs(CANADA_ALBERS_CRS)
+        
+        gdf_basins['gauge_point'] = None
+        gdf_basins.loc[valid_coords, 'gauge_point'] = points_albers.geometry
+
+    # --- 5. Fast Glacier Intersection & Distance Calculation ---
+    print("⏳ Intersecting Glaciers and Calculating Distances...")
     gdf_glaciers = gpd.read_file(GLACIER_SHP_PATH)
     rgi_col = next((c for c in gdf_glaciers.columns if 'rgiid' in c.lower()), 'RGIId')
     gdf_glaciers = gdf_glaciers.rename(columns={rgi_col: 'RGIId'})
@@ -200,18 +194,36 @@ def process_spatial_attributes(stations_list):
         how='inner', predicate='intersects'
     )
 
+    merge_cols = ['station_id', 'geometry']
+    if 'gauge_point' in basins_simplified.columns:
+        merge_cols.append('gauge_point')
+
     candidates = candidates.merge(
-        basins_simplified[['station_id', 'geometry']], 
+        basins_simplified[merge_cols], 
         on='station_id', suffixes=('_glac', '_basin')
     )
 
     glac_geoms = gpd.GeoSeries(candidates['geometry_glac'])
     basin_geoms = gpd.GeoSeries(candidates['geometry_basin'])
-    candidates['glacier_area_km2'] = glac_geoms.intersection(basin_geoms).area / 1e6
-    intersection = candidates[['RGIId', 'station_id', 'glacier_area_km2']]
+    
+    intersected_geoms = glac_geoms.intersection(basin_geoms)
+    candidates['glacier_area_km2'] = intersected_geoms.area / 1e6
+
+    if 'gauge_point' in candidates.columns:
+        gauge_geoms = gpd.GeoSeries(candidates['gauge_point'], crs=CANADA_ALBERS_CRS)
+        candidates['dist_to_gauge_km'] = intersected_geoms.centroid.distance(gauge_geoms) / 1000.0
+        candidates['weighted_dist'] = candidates['dist_to_gauge_km'] * candidates['glacier_area_km2']
+        
+    intersection = candidates
 
     # --- 6. Save Static Attributes ---
     glacier_sums = intersection.groupby('station_id')['glacier_area_km2'].sum()
+    
+    if 'weighted_dist' in intersection.columns:
+        sum_weighted_dist = intersection.groupby('station_id')['weighted_dist'].sum()
+        avg_glacier_dist_km = sum_weighted_dist / glacier_sums
+    else:
+        avg_glacier_dist_km = pd.Series(0, index=glacier_sums.index)
     
     final_cols = ['station_id', 'basin_area_km2'] + topo_cols
     if 'latitude' in gdf_basins.columns and 'longitude' in gdf_basins.columns:
@@ -222,25 +234,72 @@ def process_spatial_attributes(stations_list):
     static_df['glacier_area_km2'] = static_df['glacier_area_km2'].fillna(0)
     static_df['glacier_pct'] = (static_df['glacier_area_km2'] / static_df['basin_area_km2']) * 100
     
+    static_df['avg_glacier_dist_km'] = avg_glacier_dist_km
+    static_df['avg_glacier_dist_km'] = static_df['avg_glacier_dist_km'].fillna(0)
+    
     static_df.to_csv(OUTPUT_STATIC_ATTR)
     print(f"✅ Static attributes saved to {OUTPUT_STATIC_ATTR}")
 
-    # --- 7. Compute Volume Change ---
-    print("⏳ Calculating volume changes...")
-    area_matrix = intersection.pivot_table(
+    # --- 7. Compute Volume Change for ENSEMBLE ---
+    print("⏳ Validating Mass Balance Coverage and Calculating Volume Changes...")
+    
+    # NEW: Determine which glaciers exist in our dataset using the first MB file as a reference
+    try:
+        mb_base_df = pd.read_csv(MASS_BALANCE_FILES[0], index_col=0)
+        known_glaciers = set(mb_base_df.index)
+    except Exception as e:
+        raise RuntimeError(f"❌ Failed to load {MASS_BALANCE_FILES[0].name} for validation: {e}")
+
+    # Flag missing glaciers
+    intersection['has_mb_data'] = intersection['RGIId'].isin(known_glaciers)
+    
+    total_area = intersection.groupby('station_id')['glacier_area_km2'].sum()
+    valid_area = intersection[intersection['has_mb_data']].groupby('station_id')['glacier_area_km2'].sum()
+    
+    diag_df = pd.DataFrame({
+        'Total_Glacier_Area': total_area,
+        'Valid_MB_Area': valid_area
+    }).fillna(0)
+    
+    # Calculate missing area (using a tiny float threshold to prevent rounding errors)
+    diag_df['Missing_Area'] = diag_df['Total_Glacier_Area'] - diag_df['Valid_MB_Area']
+    problem_basins = diag_df[diag_df['Missing_Area'] > 1e-6].index.tolist()
+    
+    if problem_basins:
+        print(f"   ⚠️ Excluding {len(problem_basins)} basins from volume calculations due to missing mass balance data (e.g., US headwaters).")
+        
+    # Drop problem basins before building the pivot table
+    valid_intersection = intersection[~intersection['station_id'].isin(problem_basins)]
+
+    area_matrix = valid_intersection.pivot_table(
         index='RGIId', columns='station_id', values='glacier_area_km2', 
         aggfunc='sum', fill_value=0
     )
 
-    mb_df = pd.read_csv(MASS_BALANCE_PATH, index_col=0)
-    common_glaciers = area_matrix.index.intersection(mb_df.index)
-    
-    if len(common_glaciers) > 0:
-        vol_change = mb_df.loc[common_glaciers].T.dot(area_matrix.loc[common_glaciers])
-        vol_change.index = pd.to_datetime(vol_change.index)
-        vol_change.to_csv(OUTPUT_GLACIER_VOL)
-        print(f"✅ Volume changes saved to {OUTPUT_GLACIER_VOL}")
-        return static_df, vol_change
-    else:
-        print("⚠️ No common glaciers found for volume calculation.")
-        return static_df, None
+    vol_changes_dict = {}
+    base_out_path = Path(OUTPUT_GLACIER_VOL)
+
+    for i, mb_file in enumerate(MASS_BALANCE_FILES, start=1):
+        try:
+            print(f"   -> Processing Member {i}: {mb_file.name}")
+            mb_df = pd.read_csv(mb_file, index_col=0)
+            common_glaciers = area_matrix.index.intersection(mb_df.index)
+            
+            if len(common_glaciers) > 0:
+                vol_change = mb_df.loc[common_glaciers].T.dot(area_matrix.loc[common_glaciers])
+                vol_change.index = pd.to_datetime(vol_change.index)
+                
+                # Create unique filename (e.g., glacier_volume_change_1.csv)
+                member_out_path = base_out_path.with_name(f"{base_out_path.stem}_{i}{base_out_path.suffix}")
+                vol_change.to_csv(member_out_path)
+                
+                vol_changes_dict[i] = vol_change
+                print(f"      ✅ Saved to {member_out_path.name}")
+            else:
+                print(f"      ⚠️ No common glaciers found for Member {i}.")
+                vol_changes_dict[i] = None
+        except Exception as e:
+            print(f"      ❌ Failed to process Member {i}: {e}")
+            vol_changes_dict[i] = None
+
+    return static_df, vol_changes_dict

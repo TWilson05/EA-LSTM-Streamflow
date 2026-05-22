@@ -49,7 +49,10 @@ ELEVATION_DIR = RAW_DATA_DIR / "dem_data"
 # Glacier data files
 GLACIER_SHP_PATH = RAW_DATA_DIR / "RGI-western-canada" / "02_rgi60_WesternCanadaUS.shp"
 GLACIER_AREA_PATH = RAW_DATA_DIR / "mass_balance" / "area_dyn.csv"
-MASS_BALANCE_PATH = RAW_DATA_DIR / "mass_balance" / "ts_monthly_const_area_lstm.csv"
+MASS_BALANCE_PATH = RAW_DATA_DIR / "mass_balance"
+MASS_BALANCE_FILES = [MASS_BALANCE_PATH / "ts_monthly_const_area_lstm.csv",
+                      MASS_BALANCE_PATH / "ts_monthly_const_area_fnn.csv",
+                      MASS_BALANCE_PATH / "ts_monthly_const_area_fnn_cluster.csv"]
 
 # Static attributes
 OUTPUT_STATIC_ATTR = PROCESSED_DATA_DIR / "static_attributes.csv"
