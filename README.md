@@ -33,7 +33,9 @@ EA-LSTM-Streamflow/
 │   │   │   ├── daily_temp_max.csv
 │   │   │   └── daily_temp_min.csv
 │   │   ├── combined_streamflow.csv
-│   │   ├── glacier_volume_change.csv
+│   │   ├── glacier_volume_change_1.csv
+│   │   ├── glacier_volume_change_2.csv
+│   │   ├── glacier_volume_change_3.csv
 │   │   └── static_attributes.csv
 │   └── raw/
 │       ├── dem_data/
@@ -42,6 +44,8 @@ EA-LSTM-Streamflow/
 │       │   ├── precipitation/
 │       │   └── temperature/
 │       ├── mass_balance/
+│       │   ├── ts_monthly_const_area_fnn.csv
+│       │   ├── ts_monthly_const_area_fnn_cluster.csv
 │       │   └── ts_monthly_const_area_lstm.csv
 │       ├── RGI-western-canada/
 │       ├── spatial_bounds.csv
@@ -82,7 +86,7 @@ EA-LSTM-Streamflow/
 ````
 **Files of particular note:**
 * `data/processed/combined_streamflow.csv`: this is the ground-truth streamflow data in units of $m^3/s$. Note that there will be some gaps in this data.
-* `data/processed/glacier_volume_change.csv`: this is the monthly changes in mass balance from the mass balance model aggregated for each station. Units are in millions of cubic meters of water (MCM).
+* `data/processed/glacier_volume_change_x.csv`: this is the monthly changes in mass balance from the mass balance model aggregated for each station. Units are in millions of cubic meters of water (MCM). The three files are different outputs of the mass balance model. `x=1` is the best performing model. Using all three models allows for uncertainty quantification.
 * `data/processed/static_attributes.csv`: this is the values of static variables for each station. Area is in units of $km^2$, elevation is in $m$, and slope is unitless.
 * `data/processed/climate/`: this folder contains CSV files of the dynamic variables, structured in the same way as `combined_streamflow.csv`. Temperature has units of degrees celcius while precipitation variables are in units of millimeters averaged over the basin.
 * `data/output` contains daily predictions for each model, structured in the same manner as `combined_streamflow` except using units of millimeters over the basin area.
