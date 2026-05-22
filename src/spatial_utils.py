@@ -4,13 +4,14 @@ import numpy as np
 import rasterio
 from rasterio.mask import mask
 import warnings
+from pathlib import Path
 
-# Use your exact config setup
+# Updated import to bring in MASS_BALANCE_FILES
 from src.config import (
     DRAINAGE_FILES, 
     ELEVATION_DIR, 
     GLACIER_SHP_PATH,
-    MASS_BALANCE_PATH,
+    MASS_BALANCE_FILES, 
     OUTPUT_STATIC_ATTR,
     OUTPUT_GLACIER_VOL,
     RAW_DATA_DIR
@@ -161,22 +162,18 @@ def process_spatial_attributes(stations_list):
         print(f"   ⚠️ Failed to load or merge metadata: {e}")
 
     # --- 4. Compute Areas and Reproject Gauge Points ---
-    # Reproject the basin polygons to Albers Equal Area
     gdf_basins = gdf_basins.to_crs(CANADA_ALBERS_CRS)
     gdf_basins['basin_area_km2'] = gdf_basins.geometry.area / 1e6
 
-    # NEW: Create a projected GeoSeries for the Gauge Points to calculate accurate distances
     if 'latitude' in gdf_basins.columns and 'longitude' in gdf_basins.columns:
         valid_coords = gdf_basins['latitude'].notna() & gdf_basins['longitude'].notna()
         points_4326 = gpd.points_from_xy(
             gdf_basins.loc[valid_coords, 'longitude'], 
             gdf_basins.loc[valid_coords, 'latitude']
         )
-        # Create temporary GeoDataFrame to handle the CRS transformation
         points_gdf = gpd.GeoDataFrame(geometry=points_4326, crs="EPSG:4326")
         points_albers = points_gdf.to_crs(CANADA_ALBERS_CRS)
         
-        # Save the projected geometric points back into the main dataframe
         gdf_basins['gauge_point'] = None
         gdf_basins.loc[valid_coords, 'gauge_point'] = points_albers.geometry
 
@@ -197,7 +194,6 @@ def process_spatial_attributes(stations_list):
         how='inner', predicate='intersects'
     )
 
-    # Bring the gauge points into our candidate pairs
     merge_cols = ['station_id', 'geometry']
     if 'gauge_point' in basins_simplified.columns:
         merge_cols.append('gauge_point')
@@ -210,17 +206,12 @@ def process_spatial_attributes(stations_list):
     glac_geoms = gpd.GeoSeries(candidates['geometry_glac'])
     basin_geoms = gpd.GeoSeries(candidates['geometry_basin'])
     
-    # Calculate exact intersected geometry to get the true center of the ice *inside* the basin
     intersected_geoms = glac_geoms.intersection(basin_geoms)
     candidates['glacier_area_km2'] = intersected_geoms.area / 1e6
 
-    # NEW: Calculate Distance from Gauge to Glacier Centroid
     if 'gauge_point' in candidates.columns:
         gauge_geoms = gpd.GeoSeries(candidates['gauge_point'], crs=CANADA_ALBERS_CRS)
-        
-        # Euclidean distance in meters, converted to km
         candidates['dist_to_gauge_km'] = intersected_geoms.centroid.distance(gauge_geoms) / 1000.0
-        # Prepare the weighting math
         candidates['weighted_dist'] = candidates['dist_to_gauge_km'] * candidates['glacier_area_km2']
         
     intersection = candidates
@@ -228,7 +219,6 @@ def process_spatial_attributes(stations_list):
     # --- 6. Save Static Attributes ---
     glacier_sums = intersection.groupby('station_id')['glacier_area_km2'].sum()
     
-    # Calculate Area-Weighted Average Distance
     if 'weighted_dist' in intersection.columns:
         sum_weighted_dist = intersection.groupby('station_id')['weighted_dist'].sum()
         avg_glacier_dist_km = sum_weighted_dist / glacier_sums
@@ -240,34 +230,48 @@ def process_spatial_attributes(stations_list):
         final_cols.extend(['latitude', 'longitude'])
     
     static_df = gdf_basins[final_cols].set_index('station_id')
-    
     static_df['glacier_area_km2'] = glacier_sums
     static_df['glacier_area_km2'] = static_df['glacier_area_km2'].fillna(0)
     static_df['glacier_pct'] = (static_df['glacier_area_km2'] / static_df['basin_area_km2']) * 100
     
-    # Map the weighted distance, filling non-glaciated stations with 0
     static_df['avg_glacier_dist_km'] = avg_glacier_dist_km
     static_df['avg_glacier_dist_km'] = static_df['avg_glacier_dist_km'].fillna(0)
     
     static_df.to_csv(OUTPUT_STATIC_ATTR)
     print(f"✅ Static attributes saved to {OUTPUT_STATIC_ATTR}")
 
-    # --- 7. Compute Volume Change ---
-    print("⏳ Calculating volume changes...")
+    # --- 7. Compute Volume Change for ENSEMBLE ---
+    print("⏳ Calculating volume changes for ensemble members...")
     area_matrix = intersection.pivot_table(
         index='RGIId', columns='station_id', values='glacier_area_km2', 
         aggfunc='sum', fill_value=0
     )
 
-    mb_df = pd.read_csv(MASS_BALANCE_PATH, index_col=0)
-    common_glaciers = area_matrix.index.intersection(mb_df.index)
-    
-    if len(common_glaciers) > 0:
-        vol_change = mb_df.loc[common_glaciers].T.dot(area_matrix.loc[common_glaciers])
-        vol_change.index = pd.to_datetime(vol_change.index)
-        vol_change.to_csv(OUTPUT_GLACIER_VOL)
-        print(f"✅ Volume changes saved to {OUTPUT_GLACIER_VOL}")
-        return static_df, vol_change
-    else:
-        print("⚠️ No common glaciers found for volume calculation.")
-        return static_df, None
+    vol_changes_dict = {}
+    base_out_path = Path(OUTPUT_GLACIER_VOL)
+
+    for i, mb_file in enumerate(MASS_BALANCE_FILES, start=1):
+        try:
+            print(f"   -> Processing Member {i}: {mb_file.name}")
+            mb_df = pd.read_csv(mb_file, index_col=0)
+            common_glaciers = area_matrix.index.intersection(mb_df.index)
+            
+            if len(common_glaciers) > 0:
+                vol_change = mb_df.loc[common_glaciers].T.dot(area_matrix.loc[common_glaciers])
+                vol_change.index = pd.to_datetime(vol_change.index)
+                
+                # Create unique filename (e.g., glacier_volume_change_1.csv)
+                member_out_path = base_out_path.with_name(f"{base_out_path.stem}_{i}{base_out_path.suffix}")
+                vol_change.to_csv(member_out_path)
+                
+                vol_changes_dict[i] = vol_change
+                print(f"      ✅ Saved to {member_out_path.name}")
+            else:
+                print(f"      ⚠️ No common glaciers found for Member {i}.")
+                vol_changes_dict[i] = None
+        except Exception as e:
+            print(f"      ❌ Failed to process Member {i}: {e}")
+            vol_changes_dict[i] = None
+
+    # The calling script now receives a dictionary of volume change DataFrames {1: df1, 2: df2, 3: df3}
+    return static_df, vol_changes_dict
