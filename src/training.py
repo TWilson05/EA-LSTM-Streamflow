@@ -28,15 +28,31 @@ class BasinAveragedNSELoss(torch.nn.Module):
         
         # Return the mean over the batch
         return torch.mean(normalized_squared_error)
+    
+class MaskedMSELoss(torch.nn.Module):
+    """An example alternative loss function."""
+    def __init__(self):
+        super().__init__()
 
-def _run_epoch(model, loader, device, optimizer=None):
+    def forward(self, y_pred, y_true, q_std):
+        # We still accept q_std to maintain compatibility with the training loop,
+        # but we simply ignore it for standard MSE math.
+        mask = ~torch.isnan(y_true)
+        if mask.sum() == 0:
+            return torch.tensor(0.0, requires_grad=True).to(y_pred.device)
+            
+        pred = y_pred[mask]
+        true = y_true[mask]
+        
+        return torch.mean((pred - true) ** 2)
+
+def _run_epoch(model, loader, device, criterion, optimizer=None):
     """Shared core logic for training and evaluation."""
     is_train = optimizer is not None
     model.train() if is_train else model.eval()
     
     total_w_loss = 0
     total_valid = 0
-    criterion = BasinAveragedNSELoss()
     
     context = torch.enable_grad() if is_train else torch.no_grad()
     
@@ -67,8 +83,8 @@ def _run_epoch(model, loader, device, optimizer=None):
             
     return total_w_loss / total_valid if total_valid > 0 else 0.0
 
-def train_epoch(model, loader, optimizer, device):
-    return _run_epoch(model, loader, device, optimizer)
+def train_epoch(model, loader, optimizer, criterion, device):
+    return _run_epoch(model, loader, device, criterion, optimizer)
 
-def evaluate(model, loader, device):
-    return _run_epoch(model, loader, device, optimizer=None)
+def evaluate(model, loader, criterion, device):
+    return _run_epoch(model, loader, device, criterion, optimizer=None)

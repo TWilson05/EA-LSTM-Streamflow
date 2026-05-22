@@ -2,7 +2,7 @@ import argparse
 import torch
 from src.dataset import load_and_preprocess_data
 from src.models import EALSTM
-from src.training import train_epoch, evaluate
+from src.training import train_epoch, evaluate, BasinAveragedNSELoss
 from src.inference import predict_and_save_full_results
 from src.config import MODELS_DIR, OUTPUT_DATA_DIR
 
@@ -70,15 +70,16 @@ def main():
                    input_dim_stat=len(STATIC_FEATURES),
                    hidden_dim=HIDDEN_DIM).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
+    criterion = BasinAveragedNSELoss()
+    
     # --- 5. Training Loop ---
     best_val_loss = float('inf')
     epochs_no_improve = 0
 
     print(f"Starting Training for Member {args.member_id}...")
     for epoch in range(EPOCHS):
-        train_loss = train_epoch(model, train_loader, optimizer, DEVICE)
-        val_loss = evaluate(model, val_loader, DEVICE)
+        train_loss = train_epoch(model, train_loader, optimizer, criterion, DEVICE)
+        val_loss = evaluate(model, val_loader, criterion, DEVICE)
         
         print(f"Epoch {epoch+1:02d}/{EPOCHS} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
         
@@ -96,7 +97,7 @@ def main():
     print(f"\n--- Final Evaluation: Member {args.member_id} ---")
     model.load_state_dict(torch.load(member_model_path, weights_only=True))
 
-    # test_loss = evaluate(model, test_loader, DEVICE)
+    # test_loss = evaluate(model, test_loader, criterion, DEVICE)
     # print(f"Test Set Basin-Averaged Loss: {test_loss:.4f}")
 
     print("Generating Standard Predictions CSV...")
