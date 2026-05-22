@@ -6,7 +6,7 @@ from rasterio.mask import mask
 import warnings
 from pathlib import Path
 
-# Updated import to bring in MASS_BALANCE_FILES
+# Use your exact config setup
 from src.config import (
     DRAINAGE_FILES, 
     ELEVATION_DIR, 
@@ -241,8 +241,37 @@ def process_spatial_attributes(stations_list):
     print(f"✅ Static attributes saved to {OUTPUT_STATIC_ATTR}")
 
     # --- 7. Compute Volume Change for ENSEMBLE ---
-    print("⏳ Calculating volume changes for ensemble members...")
-    area_matrix = intersection.pivot_table(
+    print("⏳ Validating Mass Balance Coverage and Calculating Volume Changes...")
+    
+    # NEW: Determine which glaciers exist in our dataset using the first MB file as a reference
+    try:
+        mb_base_df = pd.read_csv(MASS_BALANCE_FILES[0], index_col=0)
+        known_glaciers = set(mb_base_df.index)
+    except Exception as e:
+        raise RuntimeError(f"❌ Failed to load {MASS_BALANCE_FILES[0].name} for validation: {e}")
+
+    # Flag missing glaciers
+    intersection['has_mb_data'] = intersection['RGIId'].isin(known_glaciers)
+    
+    total_area = intersection.groupby('station_id')['glacier_area_km2'].sum()
+    valid_area = intersection[intersection['has_mb_data']].groupby('station_id')['glacier_area_km2'].sum()
+    
+    diag_df = pd.DataFrame({
+        'Total_Glacier_Area': total_area,
+        'Valid_MB_Area': valid_area
+    }).fillna(0)
+    
+    # Calculate missing area (using a tiny float threshold to prevent rounding errors)
+    diag_df['Missing_Area'] = diag_df['Total_Glacier_Area'] - diag_df['Valid_MB_Area']
+    problem_basins = diag_df[diag_df['Missing_Area'] > 1e-6].index.tolist()
+    
+    if problem_basins:
+        print(f"   ⚠️ Excluding {len(problem_basins)} basins from volume calculations due to missing mass balance data (e.g., US headwaters).")
+        
+    # Drop problem basins before building the pivot table
+    valid_intersection = intersection[~intersection['station_id'].isin(problem_basins)]
+
+    area_matrix = valid_intersection.pivot_table(
         index='RGIId', columns='station_id', values='glacier_area_km2', 
         aggfunc='sum', fill_value=0
     )
@@ -273,5 +302,4 @@ def process_spatial_attributes(stations_list):
             print(f"      ❌ Failed to process Member {i}: {e}")
             vol_changes_dict[i] = None
 
-    # The calling script now receives a dictionary of volume change DataFrames {1: df1, 2: df2, 3: df3}
     return static_df, vol_changes_dict
