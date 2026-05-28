@@ -56,7 +56,11 @@ MASS_BALANCE_FILES = [MASS_BALANCE_PATH / "ts_monthly_const_area_lstm.csv",
 
 # Static attributes
 OUTPUT_STATIC_ATTR = PROCESSED_DATA_DIR / "static_attributes.csv"
-OUTPUT_GLACIER_VOL = PROCESSED_DATA_DIR / "glacier_volume_change.csv"
+OUTPUT_GLACIER_VOL_FILES = [
+    PROCESSED_DATA_DIR / "glacier_volume_change_1.csv",
+    PROCESSED_DATA_DIR / "glacier_volume_change_2.csv",
+    PROCESSED_DATA_DIR / "glacier_volume_change_3.csv"
+]
 
 # Create directories if they don't exist
 for path in [DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR,
