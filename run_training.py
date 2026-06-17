@@ -1,7 +1,7 @@
 import argparse
 import torch
 from src.dataset import load_and_preprocess_data
-from src.models import EALSTM
+from src.models import EALSTM, StandardLSTM
 from src.training import train_epoch, evaluate, BasinAveragedNSELoss
 from src.inference import predict_and_save_full_results
 from src.config import MODELS_DIR, OUTPUT_DATA_DIR
@@ -29,6 +29,7 @@ EXPERIMENT_CONFIGS = {
 def main():
     # --- 1. Command Line Arguments ---
     parser = argparse.ArgumentParser()
+    parser.add_argument('--model_type', type=str, choices=['ealstm', 'lstm'], default='ealstm', help='Which architecture to train')
     parser.add_argument("--exp_name", type=str, required=True, choices=EXPERIMENT_CONFIGS.keys(), help="Name of the experiment to run")
     parser.add_argument("--member_id", type=int, required=True, help="Ensemble member ID (0-9)")
     args = parser.parse_args()
@@ -66,9 +67,18 @@ def main():
     member_cf_path = OUTPUT_DATA_DIR / f"{args.exp_name}_preds_noglacier_member_{args.member_id}.csv"
 
     # --- 4. Initialize Model ---
-    model = EALSTM(input_dim_dyn=len(DYNAMIC_FEATURES), 
-                   input_dim_stat=len(STATIC_FEATURES),
-                   hidden_dim=HIDDEN_DIM).to(DEVICE)
+    if args.model_type == 'ealstm':
+        model = EALSTM(
+            dyn_input_size=len(DYNAMIC_FEATURES),
+            stat_input_size=len(STATIC_FEATURES),
+            hidden_size=256
+        ).to(DEVICE)
+    elif args.model_type == 'lstm':
+        model = StandardLSTM(
+            dyn_input_size=len(DYNAMIC_FEATURES),
+            stat_input_size=len(STATIC_FEATURES),
+            hidden_size=256
+        ).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = BasinAveragedNSELoss()
     
