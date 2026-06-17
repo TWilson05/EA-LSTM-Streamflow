@@ -1,6 +1,39 @@
 import torch
 import torch.nn as nn
 
+class StandardLSTM(nn.Module):
+    def __init__(self, dyn_input_size, stat_input_size, hidden_size, dropout=0.4):
+        super().__init__()
+        # The standard LSTM receives dynamic + static features combined
+        total_input_size = dyn_input_size + stat_input_size
+        
+        self.lstm = nn.LSTM(input_size=total_input_size, 
+                            hidden_size=hidden_size, 
+                            batch_first=True)
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Linear(hidden_size, 1)
+
+    def forward(self, x_dyn, x_stat):
+        # x_dyn:  (Batch, Seq_Len, Dyn_Features)
+        # x_stat: (Batch, Stat_Features)
+        
+        # 1. Repeat static features across the entire sequence length
+        seq_len = x_dyn.shape[1]
+        x_stat_repeated = x_stat.unsqueeze(1).repeat(1, seq_len, 1)
+        
+        # 2. Concatenate them together -> (Batch, Seq_Len, Total_Features)
+        x_combined = torch.cat([x_dyn, x_stat_repeated], dim=-1)
+        
+        # 3. Pass through standard LSTM
+        out, (h_n, c_n) = self.lstm(x_combined)
+        
+        # 4. Grab the output from the final timestep, apply dropout, and predict
+        last_h = out[:, -1, :]
+        last_h = self.dropout(last_h)
+        prediction = self.fc(last_h)
+        
+        return prediction
+
 class EALSTM(nn.Module):
     def __init__(self, input_dim_dyn, input_dim_stat, hidden_dim=256, dropout=0.4):
         super(EALSTM, self).__init__()
