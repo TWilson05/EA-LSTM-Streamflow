@@ -62,9 +62,9 @@ def main():
     )
 
     # File naming scheme
-    member_model_path = MODELS_DIR / f"{args.exp_name}_member_{args.member_id}.pth"
-    member_pred_path = OUTPUT_DATA_DIR / f"{args.exp_name}_preds_member_{args.member_id}.csv"
-    member_cf_path = OUTPUT_DATA_DIR / f"{args.exp_name}_preds_noglacier_member_{args.member_id}.csv"
+    member_model_path = MODELS_DIR / f"{args.exp_name}_{args.model_type}_member_{args.member_id}.pth"
+    member_pred_path = OUTPUT_DATA_DIR / f"{args.exp_name}_{args.model_type}_preds_member_{args.member_id}.csv"
+    member_cf_path = OUTPUT_DATA_DIR / f"{args.exp_name}_{args.model_type}_preds_noglacier_member_{args.member_id}.csv"
 
     # --- 4. Initialize Model ---
     if args.model_type == 'ealstm':
@@ -80,6 +80,7 @@ def main():
             hidden_size=256
         ).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    # specify loss function here
     criterion = BasinAveragedNSELoss()
     
     # --- 5. Training Loop ---
