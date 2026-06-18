@@ -36,6 +36,6 @@ echo "CUDA Available: $(python -c 'import torch; print(torch.cuda.is_available()
 # 3. Run Training
 # We pass the experiment name and the SLURM array task ID to python
 echo "Starting Training Script for Experiment: $EXP_NAME | Member: $SLURM_ARRAY_TASK_ID"
-python -u run_training.py --exp_name $EXP_NAME --member_id $SLURM_ARRAY_TASK_ID
+python -u run_training.py --exp_name $EXP_NAME --model_type $MODEL_TYPE --member_id $SLURM_ARRAY_TASK_ID
 
 echo "Job Finished."

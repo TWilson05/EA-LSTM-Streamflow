@@ -3,13 +3,15 @@ set -e
 
 # Require the user to specify the experiment name
 if [ -z "$1" ]; then
-    echo "Error: You must provide an experiment name!"
-    echo "Usage: ./submit.sh <experiment_name>"
+    echo "Error: You must provide an experiment name and a model type!"
+    echo "Usage: ./submit.sh <experiment_name> <model_type>"
     echo "Valid options: baseline, area, topographic, phase-split"
+    echo "Valid models: ealstm, lstm"
     exit 1
 fi
 
 EXP_NAME=$1
+MODEL_TYPE=$2
 
 # 1. Load Secrets
 if [ -f "secrets.env" ]; then
@@ -29,10 +31,10 @@ if [ ! -d "logs" ]; then
 fi
 
 # 3. Submit to SLURM
-echo "Submitting 10-member ensemble job for experiment: $EXP_NAME"
+echo "Submitting 10-member ensemble job for experiment: $EXP_NAME and model: $MODEL_TYPE"
 
 sbatch \
     --account=$ACCOUNT \
     --mail-user=$EMAIL \
-    --export=ALL,EXP_NAME=$EXP_NAME \
+    --export=ALL,EXP_NAME=$EXP_NAME,MODEL_TYPE=$MODEL_TYPE \
     hpc/job.sh
