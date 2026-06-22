@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from src.config import MODELS_DIR, DATA_START_YEAR, DATA_END_YEAR
-from src.data_utils import load_raw_csvs, align_and_filter, load_scalers, normalize
+from src.data_utils import load_raw_csvs, align_and_filter, load_scalers, normalize, scaler_json_path
 
 SEQUENCE_LENGTH = 365
 
@@ -21,8 +21,12 @@ def predict_and_save_full_results(model, device, output_file, dynamic_cols, stat
         dyn_dict_raw, flow_raw, static_raw, static_cols
     )
     
-    # 2. Load Scalers
-    scaler_path = MODELS_DIR / f"{exp_name}_scalers.json"
+    # 2. Load Scalers (architecture-qualified name from the model itself, with a
+    #    legacy fallback so older single-architecture runs still resolve)
+    model_type = getattr(model, "MODEL_TYPE", None)
+    scaler_path = scaler_json_path(exp_name, model_type)
+    if not scaler_path.exists():
+        scaler_path = scaler_json_path(exp_name)  # legacy {exp_name}_scalers.json
     scalers = load_scalers(scaler_path)
     
     # 3. Normalize Dynamic Features

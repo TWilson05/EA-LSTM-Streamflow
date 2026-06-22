@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import json
 import os
-from src.config import PROCESSED_DATA_DIR, CLIMATE_OUTPUT_DIR
+from src.config import PROCESSED_DATA_DIR, CLIMATE_OUTPUT_DIR, MODELS_DIR
 
 # Map feature names to their corresponding files
 DYNAMIC_FILE_MAP = {
@@ -68,6 +68,19 @@ def align_and_filter(dyn_dict, flow, static, static_cols):
 def calculate_runoff(flow_m3s, areas_km2):
     """Converts Flow (m^3/s) -> Specific Runoff (mm/day)."""
     return (flow_m3s * 86.4) / areas_km2
+
+def scaler_json_path(exp_name, model_type=None):
+    """Path to a model's scalers JSON.
+
+    Architecture-qualified ({exp_name}_{model_type}_scalers.json) when model_type
+    is given, else the legacy {exp_name}_scalers.json. Keeping model_type in the
+    name prevents two architectures that share an exp_name (e.g. topographic
+    EA-LSTM vs topographic LSTM) from overwriting each other's scalers — they use
+    identical feature scalers today, but that is not guaranteed in general.
+    """
+    name = f"{exp_name}_{model_type}_scalers.json" if model_type else f"{exp_name}_scalers.json"
+    return MODELS_DIR / name
+
 
 def compute_and_save_scalers(dyn_array, stat_array, basin_stds, scaler_path, static_feature_names):
     """Computes mean/std and saves to JSON."""

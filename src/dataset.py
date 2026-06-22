@@ -5,8 +5,8 @@ from src.config import (MODELS_DIR,
                         TRAIN_START_YEAR, TRAIN_END_YEAR,
                         VAL_START_YEAR, VAL_END_YEAR,
                         TEST_START_YEAR, TEST_END_YEAR)
-from src.data_utils import (load_raw_csvs, align_and_filter, calculate_runoff, 
-                            compute_and_save_scalers, normalize)
+from src.data_utils import (load_raw_csvs, align_and_filter, calculate_runoff,
+                            compute_and_save_scalers, normalize, scaler_json_path)
 
 class LazyStreamflowDataset(Dataset):
     def __init__(self, dyn_array, stat_array, y_array, time_indices, basin_stds, sequence_length=365):
@@ -30,7 +30,7 @@ class LazyStreamflowDataset(Dataset):
                 torch.tensor([self.y[t, s]]).float(),
                 torch.tensor([self.basin_stds[s]]).float())
  
-def load_and_preprocess_data(dynamic_cols, static_cols, exp_name, sequence_length=365, batch_size=256, num_workers=0):
+def load_and_preprocess_data(dynamic_cols, static_cols, exp_name, model_type=None, sequence_length=365, batch_size=256, num_workers=0):
     print("⏳ Loading Data...")
     
     # 1. Load and Align
@@ -62,7 +62,7 @@ def load_and_preprocess_data(dynamic_cols, static_cols, exp_name, sequence_lengt
     basin_stds[basin_stds < 1e-4] = 1.0
     
     # Pass the dynamic static_cols variable instead of the hardcoded list
-    scaler_path = MODELS_DIR / f"{exp_name}_scalers.json"
+    scaler_path = scaler_json_path(exp_name, model_type)
     scalers = compute_and_save_scalers(train_dyn,
                                        stat_vals,
                                        basin_stds,

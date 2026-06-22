@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 
 class StandardLSTM(nn.Module):
+    MODEL_TYPE = "lstm"
+
     def __init__(self, dyn_input_size, stat_input_size, hidden_size, dropout=0.4):
         super().__init__()
         # The standard LSTM receives dynamic + static features combined
@@ -35,6 +37,8 @@ class StandardLSTM(nn.Module):
         return prediction
 
 class EALSTM(nn.Module):
+    MODEL_TYPE = "ealstm"
+
     def __init__(self, input_dim_dyn, input_dim_stat, hidden_dim=256, dropout=0.4):
         super(EALSTM, self).__init__()
         self.input_dim_dyn = input_dim_dyn

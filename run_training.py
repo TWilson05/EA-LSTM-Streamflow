@@ -56,6 +56,7 @@ def main():
         dynamic_cols=DYNAMIC_FEATURES,
         static_cols=STATIC_FEATURES,
         exp_name=args.exp_name,
+        model_type=args.model_type,
         sequence_length=365,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKERS
