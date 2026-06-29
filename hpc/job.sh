@@ -34,16 +34,9 @@ echo "Python path: $(which python)"
 echo "CUDA Available: $(python -c 'import torch; print(torch.cuda.is_available())')"
 
 # 3. Run Training
-# We pass the experiment name and the SLURM array task ID to python.
-# SAVE_HIDDEN (optional, from submit.sh 3rd arg) toggles --save_hidden, which also
-# emits the final-timestep LSTM hidden states h_T for the Ch3 variance head.
-EXTRA_FLAGS=""
-if [ "$SAVE_HIDDEN" = "save_hidden" ] || [ "$SAVE_HIDDEN" = "1" ] || [ "$SAVE_HIDDEN" = "true" ]; then
-    EXTRA_FLAGS="--save_hidden"
-    echo "Hidden-state extraction ENABLED (--save_hidden)"
-fi
-
-echo "Starting Training Script for Experiment: $EXP_NAME | Member: $SLURM_ARRAY_TASK_ID"
+# Experiment name, model type, member ID, and any optional flags (EXTRA_FLAGS, e.g.
+# --save_hidden) are all resolved in submit.sh and forwarded via --export.
+echo "Starting Training Script for Experiment: $EXP_NAME | Member: $SLURM_ARRAY_TASK_ID | Flags: ${EXTRA_FLAGS:-none}"
 python -u run_training.py --exp_name $EXP_NAME --model_type $MODEL_TYPE --member_id $SLURM_ARRAY_TASK_ID $EXTRA_FLAGS
 
 echo "Job Finished."

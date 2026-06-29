@@ -13,7 +13,14 @@ fi
 
 EXP_NAME=$1
 MODEL_TYPE=$2
-SAVE_HIDDEN=$3   # optional: pass "save_hidden" to also emit h_T for the variance head
+
+# Optional 3rd arg "save_hidden" -> translate to the run_training.py flag here, so
+# job.sh stays a pure runner (no branching). Forwarded as a single token via --export
+# (which cannot carry spaces; fine for one flag).
+EXTRA_FLAGS=""
+if [ "$3" = "save_hidden" ]; then
+    EXTRA_FLAGS="--save_hidden"
+fi
 
 # 1. Load Secrets
 if [ -f "secrets.env" ]; then
@@ -38,5 +45,5 @@ echo "Submitting 10-member ensemble job for experiment: $EXP_NAME and model: $MO
 sbatch \
     --account=$ACCOUNT \
     --mail-user=$EMAIL \
-    --export=ALL,EXP_NAME=$EXP_NAME,MODEL_TYPE=$MODEL_TYPE,SAVE_HIDDEN=$SAVE_HIDDEN \
+    --export=ALL,EXP_NAME=$EXP_NAME,MODEL_TYPE=$MODEL_TYPE,EXTRA_FLAGS=$EXTRA_FLAGS \
     hpc/job.sh
