@@ -32,6 +32,9 @@ def main():
     parser.add_argument('--model_type', type=str, choices=['ealstm', 'lstm'], default='ealstm', help='Which architecture to train')
     parser.add_argument("--exp_name", type=str, required=True, choices=EXPERIMENT_CONFIGS.keys(), help="Name of the experiment to run")
     parser.add_argument("--member_id", type=int, required=True, help="Ensemble member ID (0-9)")
+    parser.add_argument("--save_hidden", action="store_true",
+                        help="Also emit final-timestep LSTM hidden states h_T (for the Ch3 variance head) "
+                             "from the final prediction pass -> data/output/results_MVE/states/")
     args = parser.parse_args()
 
     # --- 2. Configuration ---
@@ -113,11 +116,18 @@ def main():
     # print(f"Test Set Basin-Averaged Loss: {test_loss:.4f}")
 
     print("Generating Standard Predictions CSV...")
+    # h_T is collected in this same forward pass when --save_hidden is set, so it
+    # shares the prediction's scalers / windowing / eval determinism by construction.
+    hidden_out = None
+    if args.save_hidden:
+        hidden_out = OUTPUT_DATA_DIR / "results_MVE" / "states" / f"hidden_member_{args.member_id}.npy"
+
     predict_and_save_full_results(
         model, DEVICE, output_file=member_pred_path,
         dynamic_cols=DYNAMIC_FEATURES, static_cols=STATIC_FEATURES,
         exp_name=args.exp_name,
-        batch_size=BATCH_SIZE, force_zero_glacier=False
+        batch_size=BATCH_SIZE, force_zero_glacier=False,
+        hidden_out_file=hidden_out,
     )
 
     if 'glacier_pct' in STATIC_FEATURES:

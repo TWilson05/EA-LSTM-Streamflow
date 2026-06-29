@@ -15,25 +15,29 @@ class StandardLSTM(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_size, 1)
 
-    def forward(self, x_dyn, x_stat):
+    def forward(self, x_dyn, x_stat, return_hidden=False):
         # x_dyn:  (Batch, Seq_Len, Dyn_Features)
         # x_stat: (Batch, Stat_Features)
-        
+
         # 1. Repeat static features across the entire sequence length
         seq_len = x_dyn.shape[1]
         x_stat_repeated = x_stat.unsqueeze(1).repeat(1, seq_len, 1)
-        
+
         # 2. Concatenate them together -> (Batch, Seq_Len, Total_Features)
         x_combined = torch.cat([x_dyn, x_stat_repeated], dim=-1)
-        
+
         # 3. Pass through standard LSTM
         out, (h_n, c_n) = self.lstm(x_combined)
-        
-        # 4. Grab the output from the final timestep, apply dropout, and predict
-        last_h = out[:, -1, :]
-        last_h = self.dropout(last_h)
-        prediction = self.fc(last_h)
-        
+
+        # 4. Final-timestep hidden state -> dropout -> linear head.
+        #    h_T (pre-dropout) is the (B, H) representation that feeds self.fc and
+        #    is what the Ch3 variance head consumes. At eval() dropout is identity,
+        #    so the prediction is bit-identical whether or not h_T is returned.
+        h_T = out[:, -1, :]
+        prediction = self.fc(self.dropout(h_T))
+
+        if return_hidden:
+            return prediction, h_T
         return prediction
 
 class EALSTM(nn.Module):
