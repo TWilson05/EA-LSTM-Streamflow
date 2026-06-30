@@ -2,13 +2,13 @@
 
 # --- SLURM CONFIGURATION ---
 #SBATCH --job-name=ealstm_ensemble             # Job name (shows up in queue)
-#SBATCH --time=48:00:00                        # Max run time (HH:MM:SS)
+#SBATCH --time=24:00:00                        # Max run time (HH:MM:SS)
 #SBATCH --nodes=1                              # We only need 1 computer node
 #SBATCH --ntasks=1                             # We run 1 main task
 #SBATCH --cpus-per-task=4                      # CPU cores (Matches num_workers in loader)
 #SBATCH --mem=24G                              # RAM
 #SBATCH --gpus=1
-#SBATCH --array=0-9%5                          # Creates 10 jobs (IDs 0-9) while running a max of 5 at a time
+#SBATCH --array=0-9                            # Creates 10 jobs (IDs 0-9) while running a max of 5 at a time
 
 # --- EMAIL NOTIFICATIONS ---
 #SBATCH --mail-type=BEGIN,END,FAIL             # Email on start, finish, and crash
@@ -27,6 +27,7 @@ echo "Setting up job environment on $(hostname)..."
 module purge
 module load intel-oneapi-compilers/2023.1.0
 module load python/3.11.6
+module load cuda                 # CUDA runtime for the GPU torch build
 source venv/bin/activate
 
 # 2. Debug Info (Optional but helpful)
