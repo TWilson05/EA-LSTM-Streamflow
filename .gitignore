@@ -24,5 +24,6 @@ __pycache__
 *.egg-info
 *venv
 .python-version
+*.npy
 # environment files
 *.env

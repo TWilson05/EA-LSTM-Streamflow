@@ -41,11 +41,11 @@ echo "CUDA Available: $(python -c 'import torch; print(torch.cuda.is_available()
 #    Fast, CPU-only. Safe to run every time; it's the seam between Job 1 and Job 2.
 #    TODO(uncomment once Job 1 outputs + states are present on the cluster):
 # echo "Building index contract for: $EXP_NAME / $MODEL_TYPE"
-# python -m src.build_index --exp_name $EXP_NAME --model_type $MODEL_TYPE
+python -m src.build_index --exp_name $EXP_NAME --model_type $MODEL_TYPE
 
 # 4. Step 1 — train the variance head off the frozen mean + hidden states.
 #    TODO(fill in once run_variance_head.py exists; flag contract not finalized):
 echo "Starting Variance Head for Experiment: $EXP_NAME | Model: $MODEL_TYPE"
-# python -u run_variance_head.py --exp_name $EXP_NAME --model_type $MODEL_TYPE
+python -u run_variance_head.py --exp_name $EXP_NAME --model_type $MODEL_TYPE
 
 echo "Job Finished."
