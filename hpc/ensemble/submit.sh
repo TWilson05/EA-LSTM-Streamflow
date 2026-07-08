@@ -46,4 +46,4 @@ sbatch \
     --account=$ACCOUNT \
     --mail-user=$EMAIL \
     --export=ALL,EXP_NAME=$EXP_NAME,MODEL_TYPE=$MODEL_TYPE,EXTRA_FLAGS=$EXTRA_FLAGS \
-    hpc/job.sh
+    hpc/ensemble/job.sh
