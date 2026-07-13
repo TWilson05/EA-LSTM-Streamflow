@@ -631,3 +631,220 @@ required for the MVE paper. **The trap:** do not let the MVE paper ASSERT model-
 using these events while skipping attribution — that imports Claim 2's burden into Claim 1's section.
 Keep MVE-paper OOD language to CALIBRATION ("intervals under-cover the observed tail"), with a
 flood-stage rating-curve caveat; defer "why the mean missed" explicitly.
+
+# chapter3.md — updates 2026-07-13
+
+**How to use this file.** These are splice-in blocks, formatted to respect your append-only
+convention rather than rewrite the consolidated body in place. Block A **appends** to Appendix A
+(do not touch existing entries). Blocks B–D are dated addenda / a refreshed reference list for the
+living sections (§9, §2.5, §8). I chose an update pack over regenerating the full ~8k-word file
+deliberately — to avoid transcription drift in your precise technical wording (the 1/M accounting,
+the kurtosis figures, the decomposition algebra). Say the word if you'd rather I emit a single fully
+merged chapter3.md instead.
+
+---
+
+## BLOCK A — append to Appendix A (append-only log)
+
+### 2026-07-13 — GAP-2 resolved (verified hydrology-venue lit check); aleatoric head pivot; workshop plan; Frame correction
+
+**GAP-2 verdict (resolves the 2026-06-19 addendum's "GAP-2 UNRESOLVED").** Ran the dedicated
+hydrology-venue check the earlier GAP-1-concentrated run deferred. Verdict:
+
+- **BROAD claim is FALSE — do not assert "formal Bayesian DL for streamflow is undone."** Formal
+  variational inference over LSTM weights already exists in hydrology: **Li et al. 2021** (WRR
+  57, 10.1029/2021WR029772) implement stochastic VI over LSTM weights as a residual-error model on
+  process-based models (2 Chinese catchments, no OOD/extremes); **Li et al. 2022** (VB-LSTM, J.
+  Hydrol., PII S0022169421012713) use variational-Bayes LSTM as a multi-model ensemble combiner
+  (beats BMA; no extremes focus). A reviewer will produce both immediately.
+- **NARROW gap is REAL and under-explored:** the *conjunction* of (post-hoc, mean-frozen config) ×
+  (hydrological OOD extremes) × (explicit ensemble-spread-vs-formal-weights epistemic-honesty
+  comparison). No verified paper occupies that triple. Confidence: high the broad claim is false;
+  moderate-high the narrow gap is open. **Caveat:** did not exhaustively sweep 2024–2026
+  preprints (EarthArXiv/EGUsphere) — "open" = *not contradicted*, not *proven empty*.
+- **Structural finding for framing:** formal MCMC/HMC in hydrology targets *low-dimensional physical
+  parameters* (e.g. DREAM/Vrugt; HMC + stochastic-rain-model, HESS 27:2935, 2023), NOT NN weights —
+  weight-space MCMC is infeasible at LSTM scale. That seam is *why* DL-hydrology uses
+  dropout/ensembles/mixture heads instead of formal weight posteriors; it is a methodological reason,
+  not an oversight, and it is the bridge this chapter sits on.
+- **Klotz 2022 already reports the D-blind precursor:** UMAL and MC-dropout are overconfident /
+  too-narrow at high flow. Position our finding as extending that in-benchmark observation to a
+  formal ensemble-vs-weights statement at named OOD events.
+
+**Aleatoric head: PIVOT from Student-t → CMAL/UMAL or log-scale (skew is first-order).** Supersedes
+the 2026-06-19 "heteroscedastic Student-t as the fork-point VE" decision *for the aleatoric-first
+step*. Rationale: standardized-residual skew is first-order (not merely heavy tails); a symmetric
+Student-t cannot hold regime-dependent skew → this is Branch B firing, i.e. following the plan, not
+abandoning it. Sub-decisions recorded:
+- **Log ≠ clean with a frozen physical-space mean.** Residuals `r = y − μ̂` are signed (can't log);
+  modelling `log y | x` has location `E[log y|x]`, which by Jensen ≠ `log μ̂`. A log-space likelihood
+  centred on `log μ̂` is biased; un-biasing reintroduces a fitted location (breaks "frozen") or needs
+  a smearing correction to defend. **CMAL/single-ALD models skew natively around frozen μ̂ in
+  physical space** — no transform, no Jensen gap. On frozen-mean compatibility the native asymmetric
+  head is strictly cleaner than log → prefer CMAL/ALD as the *first* move (reverses the "log first"
+  ordering that was casually listed).
+- **CMAL mean-freezing subtlety:** a K-component mixture has K locations → aggregate mean is
+  emergent, so a full mixture can quietly un-freeze the mean. A **single asymmetric Laplacian**
+  (location = frozen μ̂, fit scale + asymmetry τ off `h`) preserves the clean frozen-mean story and
+  still delivers skew. Verify frozen-mean mechanics per family (UMAL differs: sampled τ,
+  quantile-regression basis).
+- **Novelty after pivot:** loses the scale-mixture / hierarchical-variance justification (t-specific)
+  and the "simplest object framing both forks" device. Survives: (a) the post-hoc / mean-frozen /
+  residual-trained *config* (Klotz did CMAL/UMAL end-to-end, not this); (b) using the Klotz-best
+  skew-aware aleatoric head *hardens* the epistemic claim — aleatoric flatness at OOD can no longer
+  be dismissed as head misspecification. Epistemic fork untouched.
+
+**Workshop (D-blind slice): linear Gaussian head is acceptable.** For the 4-page workshop paper only,
+fit a linear (escalate to small MLP if it underfits) Gaussian-NLL head off frozen `h`. Justification:
+D-blind is a *moment-level* claim, and the Gaussian NLL σ² optimum estimates
+`E[(y−μ̂)²|x] = Var + bias²`, which is **distribution-free** — skew misspecification corrupts
+PIT/coverage, not the moment. Constraint: **make no PIT/coverage claim with the Gaussian head**
+(that would invite "your head isn't skew-aware"; save calibration for the CMAL/log HESS paper). The
+headline (ensemble spread σ_e², head-free) is robust regardless. The skew-aware head is a HESS
+concern, not a workshop blocker.
+
+**Workshop D-blind — analysis order (recorded so the 4-pager turns around fast once a venue confirms):**
+(1) in-distribution competence check = the load-bearing control: show linear-head σ tracks the
+empirical binned conditional residual variance in-dist → separates Branch C (flat everywhere =
+representation/head too weak) from D-blind (works in-dist, fails only at OOD); (2) confirm heat-dome
+mean regression (have: μ̂/obs ≈ 0.81, forcing-selected, robust); (3) read μ̂ shrinkage, σ_e
+(head-free), σ_a (head) at event vs in-dist — D-blind = μ̂ regresses AND σ_e narrow AND σ_a fails to
+inflate; (4) clincher figure = standardized `z = (y−μ̂)/σ_total` at events (huge |z|) vs well-behaved
+in-dist z. **Mechanism to state explicitly:** head trains on ~unbiased in-dist residuals → learns
+σ ≈ Var, no bias² term; at OOD reads a frozen `h` that may not encode the novelty → structurally
+cannot anticipate OOD bias² (aleatoric blindness expected by construction). Non-obvious ML-relevant
+finding = *ensemble* blindness (independently-init members agree where all wrong) → empirical
+rebuttal to "deep ensembles ≈ Bayesian marginalization." Lead with that.
+
+**Station constraint (drives event usage):** heat dome = all 269 (selection-robust, 264/269 >1.5σ
+Tmax) → the load-bearing event, anchors the workshop; AR flood = ~70 spatially-blocked stations
+(SW-BC corridor, orographic precip under-captured) → statistically weaker + causally ambiguous +
+carries the attribution burden → **defer to HESS**, do not anchor the workshop on it.
+
+**Venue / workshop strategy (supersedes the §8 timeline's "HESS by Dec" pressure framing):**
+- **HESS has no submission deadline** — a January submission costs nothing but coursework overlap.
+  The real constraint is personal bandwidth: draft *before* the 4–5-course winter term. Treat
+  "done before January" as a strong preference protected by starting to write in September (off the
+  August framing pass), NOT by compressing the end. Failure mode to avoid = rushing to beat a
+  self-imposed date and drawing major revisions.
+- **NeurIPS'26 workshop (ML4PS/CCAI)** is the only fixed external date (contributed-paper deadline
+  ~late-Aug/early-Sept; notifications before Sept 29; conference Sydney Dec 6–12). Workshop slate
+  being confirmed as of 2026-07-13; ML4PS CFP not yet posted. **Opportunistic shot:** submit the
+  4-page D-blind (heat-dome) abstract in August *iff* the result is clean — it is a subset of
+  analysis being done anyway, and writing it crystallizes the HESS framing early. **Decouple
+  acceptance from attendance:** the accepted paper is the NSERC-wrap deliverable; present
+  remotely / at the Paris–Atlanta satellite / via co-author rather than flying to Sydney into the
+  HESS-writing window. MSc already secured (UBC geophysics), so the workshop is pure
+  enrichment/exposure — strictly droppable behind the paper.
+- **Fallback:** a spring-2027 workshop (e.g. CCAI@ICLR'27) off the finished draft — **but ICLR'27
+  location is UNVERIFIED**; the "west-coast US, easy/cheap" assumption is not confirmed (ICLR 2026
+  was Rio; one low-quality source hints ICLR'27 = Singapore). Check iclr.cc before relying on it.
+- ML exposure comes from the workshop; keep the big paper at **HESS** (D-blind/risk story, Klotz
+  lineage). JGR-MLC only if the result turns method-dominant (Branch A), which the CMAL/log pivot
+  makes less likely.
+
+**Frame (2022) characterization — correction for §7.** Frame is **not an ML skeptic**; co-authors are
+the pro-LSTM neural-hydrology camp (Kratzert/Klotz/Gauch/Nearing/Gupta), and the paper is a *rebuttal*
+to skeptics: it opens by naming "a concern among hydrologists" that DL can't extrapolate, then
+largely refutes it, and finds that adding mass-balance constraints (MC-LSTM) *hurt* at extremes
+(pure ML > physics-constrained ML — the opposite of skepticism). What is true and usable: his
+headline extrapolation metric is the absolute percent bias of the largest annual peak-flow event,
+binned by return period, across ~498 CONUS/CAMELS basins — an aggregate **point-prediction** skill
+metric with **no uncertainty/coverage evaluation**. §7 reconciliation therefore stands on firmer
+ground: Frame's object = the *mean's* capability; our Claim 1 object = the *interval's* coverage —
+different objects, no collision. Also note his "extremes" = magnitude/return-period extremes within
+the record; our 2021 events = regime-novelty (heat-dome PET, orographic-AR precip) — same word,
+different extrapolation axis. Present Frame as the optimistic pole of a live debate (2025 HESS
+bounded-ceiling paper is the counterweight), not as settled fact.
+
+---
+
+## BLOCK B — replace §9 "Literature" with the refreshed version below
+
+### 9. Literature
+
+#### Verified (authors/year/venue/DOI or arXiv confirmed 2026-06 → 2026-07)
+
+*Faithful-regression & MVE lineage (unchanged, previously verified)*
+- Nix & Weigend 1994, IEEE ICNN, 10.1109/ICNN.1994.374138 — MVE head.
+- Andrews & Mallows 1974 / West 1987 — scale-mixture origin of the Student-t.
+- Seitzer 2022, ICLR, arXiv:2203.09168 — β-NLL, Gaussian-NLL mean pathology.
+- Stirn 2023, AISTATS, PMLR v206 / arXiv:2212.09184 — faithful heteroscedastic regression.
+- Sluijterman 2024, Neurocomputing, 10.1016/j.neucom.2024.127929 — post-warmup freeze ≈ joint.
+- Amini 2020, NeurIPS, arXiv:1910.02600 — Deep Evidential Regression (NIG = scale mixture).
+- Meinert 2023, AAAI, 10.1609/aaai.v37i8.26096 + Juergens/Meinert 2024, ICML, arXiv:2402.09056 — DER epistemic is a heuristic.
+- Pourkamali-Anaraki 2026, NCA, 10.1007/s00521-026-12042-x / arXiv:2503.12354 — TDistNN (head form no longer novel).
+- Huttel 2023, arXiv:2308.10650 (non-archival) — Bayesian evidential quantile regression.
+
+*Hydrology UQ lineage (GLUE → formal Bayes → Bayesian DL) — NEW this run*
+- Beven & Binley 1992, Hydrol. Process. 6:279–298 (GLUE; DOI 10.1002/hyp.3360060305, standard — not re-fetched).
+- Vrugt et al. 2009, SERRA 23, 10.1007/s00477-008-0274-y — DREAM (formal MCMC) vs GLUE debate.
+- Nott et al. 2012, WRR, 10.1029/2011WR011128 — GLUE ≈ Approximate Bayesian Computation.
+- Jin et al. 2010, J. Hydrol. 383(3–4):147–155, 10.1016/j.jhydrol.2009.12.028 — GLUE vs formal Bayes, conceptual model.
+- HMC + stochastic-rain-model 2023, HESS 27:2935 — formal HMC on *physical parameters* (not NN weights).
+- Li et al. 2021, WRR 57, 10.1029/2021WR029772 — **formal SVI over LSTM weights** (residual-error; 2 catchments; no OOD).
+- Li et al. 2022, J. Hydrol., PII S0022169421012713 — VB-LSTM, **formal VI** (ensemble combiner; no extremes); *DOI 10.1016/j.jhydrol.2021.127046 to confirm*.
+- Klotz et al. 2022, HESS 26:1673–1693, 10.5194/hess-26-1673-2022 — CMAL/UMAL + MC-dropout; overconfident at high flow.
+- Frame et al. 2022, HESS 26:3377–3392, 10.5194/hess-26-3377-2022 — mean extrapolation (has corrigendum); pro-LSTM, point-prediction metric, no UQ.
+- "Unveiling the limits of deep learning in hydrological extrapolation" 2025, HESS 29:5871 — bounded-output ceiling counterpoint; *authors to confirm*.
+- Nearing et al. 2021, WRR 57 e2020WR028091, 10.1029/2020WR028091 — role of hydro science + ML.
+- Nearing et al. 2024, Nature 627:559–563, 10.1038/s41586-024-07145-1 — global extreme-flood prediction (extremes, not UQ-focused).
+- Willard et al. 2025, JGR-MLC, 10.1029/2025JH000732 — ML ensembles + proper scoring rules for UQ.
+
+*General ML-UQ (importable; NO streamflow application found — flag as import, not hydrology precedent)*
+- Lakshminarayanan et al. 2017, NeurIPS, arXiv:1612.01474 (10.48550/ARXIV.1612.01474) — deep ensembles.
+- Fort et al. 2019, arXiv:1912.02757 — ensembles loss-landscape (what the spread samples).
+- Maddox et al. 2019, NeurIPS, arXiv:1902.02476 — SWAG (no hydro use found).
+- Daxberger et al. 2021, NeurIPS 34:20089, arXiv:2106.14806 — Laplace Redux (no hydro use found).
+- Hüllermeier & Waegeman 2021, Mach. Learn. 110(3):457–506, 10.1007/s10994-021-05946-3 — aleatoric/epistemic split.
+- Ovadia et al. 2019, arXiv:1906.02530 (10.48550/arXiv.1906.02530) — UQ degrades under shift.
+
+*Events*
+- White et al. 2023, Nat. Commun. 14:727, 10.1038/s41467-023-36289-3 — 2021 PNW heat dome. **AR / Nov-2021 BC flood reference still missing** (open fork: meteorological AR-characterization source for Claim 2A vs flood-impact source vs CW3E AR-intensity catalog).
+
+*Attribution / functional-realism lineage*
+- Bayati et al. 2026, WRR, 10.1029/2025WR040076 (UBC EOAS) — functional realism (surrogate-IRF scrapped from Ch3, see Appendix A 2026-06-19).
+- Kirchner 2024, HESS 28(19):4427–4454, 10.5194/hess-28-4427-2024 — ERRA (ensemble rainfall-runoff analysis).
+
+#### Still UNVERIFIED — do not add as fact until confirmed
+Kendall & Gal 2017; Wilson & Izmailov 2020 (arXiv:2002.08791 — the "ensembles ≈ Bayesian
+marginalization" claim our D-blind result argues against; verify before citing); Kristiadi 2020
+(last-layer Laplace, arXiv:2002.10118); Izmailov 2021 (HMC for NNs, arXiv:2104.14421); Gal &
+Ghahramani 2016 (MC-dropout, arXiv:1506.02142); Bishop 1994 (MDN); Ghobadi & Kang 2022 (Water
+14:3672 — confirm whether *formal* Bayesian or dropout-flavoured before using as a formal-DL precedent).
+
+#### Did not find (flag as absence-of-evidence, not confirmed-absent)
+Deep kernel learning and explicit functional-space priors applied to rainfall-runoff / streamflow.
+
+#### Citation-accuracy flags (unchanged)
+Takahashi et al. 2018 is a Student-t **VAE** (IJCAI 2018), NOT a regression head. No canonical
+"Student-t MVE neural net" landmark exists the way Nix–Weigend owns Gaussian MVE.
+
+---
+
+## BLOCK C — append to §2.5 (Novelty positioning) as a dated addendum
+
+> **Update 2026-07-13 (post GAP-2 hydrology-venue check + aleatoric pivot).** GAP-2 is resolved (see
+> Appendix A 2026-07-13): the *broad* "formal Bayesian DL for streamflow is undone" claim is FALSE
+> (Li et al. 2021 WRR; Li et al. 2022 J. Hydrol. are formal VI over LSTM weights) — do not assert it;
+> the *narrow* gap (post-hoc mean-frozen config × hydrological OOD extremes × ensemble-vs-formal
+> epistemic-honesty comparison) is real and under-explored (confidence moderate-high; 2024–26
+> preprints not exhaustively swept). Aleatoric head pivots Student-t → CMAL/single-ALD (skew is
+> first-order = Branch B; log rejected for frozen-mean/Jensen incompatibility). Novelty now rests on
+> (a) the post-hoc/mean-frozen/residual-trained config, (b) the CMAL-best skew-aware head *hardening*
+> the epistemic claim, (c) hydrology-extremes application, (d) the ensemble-vs-formal fork — NOT on
+> the (now-dropped) Student-t scale-mixture justification.
+
+---
+
+## BLOCK D — append to §8 (Venue strategy) as a dated addendum
+
+> **Update 2026-07-13.** HESS has **no submission deadline** → "by Christmas" is a self-imposed
+> bandwidth goal (draft before the 4–5-course winter), not a wall; a January submission is fine, and
+> rushing into major revisions is the real cost to avoid. Workshop route (ML exposure, NSERC wrap,
+> MSc already secured so purely additive): NeurIPS'26 ML4PS/CCAI, contributed-paper deadline
+> ~late-Aug/early-Sept, Sydney Dec 6–12 — submit the heat-dome D-blind 4-pager in August *iff* the
+> result is clean, and **decouple acceptance from attendance** (present remote/satellite/co-author,
+> keep the December week for the paper). Fallback = spring-2027 workshop (CCAI@ICLR'27) off the
+> finished draft — **ICLR'27 location unverified; do not assume west-coast US / cheap** (ICLR 2026 =
+> Rio; check iclr.cc). Big paper stays HESS unless the result turns method-dominant (→ JGR-MLC).
