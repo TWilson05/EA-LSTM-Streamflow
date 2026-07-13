@@ -37,14 +37,14 @@ source venv/bin/activate
 echo "Python path: $(which python)"
 echo "CUDA Available: $(python -c 'import torch; print(torch.cuda.is_available())')"
 
-# 3. Step 0 — (re)build the index contract from the ensemble outputs.
-#    Fast, CPU-only. Safe to run every time; it's the seam between Job 1 and Job 2.
-#    TODO(uncomment once Job 1 outputs + states are present on the cluster):
-# echo "Building index contract for: $EXP_NAME / $MODEL_TYPE"
+# 3. Step 0 — (re)build the index contract from the ensemble outputs (the Job 1 -> Job 2
+#    seam). Fast, CPU-only; safe to run every time.
+echo "Building index contract for: $EXP_NAME / $MODEL_TYPE"
 python -m src.build_index --exp_name $EXP_NAME --model_type $MODEL_TYPE
 
-# 4. Step 1 — train the variance head off the frozen mean + hidden states.
-#    TODO(fill in once run_variance_head.py exists; flag contract not finalized):
+# 4. Step 1 — train the variance head off the frozen mean + hidden states, then emit the
+#    predictive variance grid (run_variance_head calls predict_and_save_variance at the end,
+#    writing data/output/results_MVE/variance/). Calibration is done afterwards in EXP7.
 echo "Starting Variance Head for Experiment: $EXP_NAME | Model: $MODEL_TYPE"
 python -u run_variance_head.py --exp_name $EXP_NAME --model_type $MODEL_TYPE
 
