@@ -1,7 +1,10 @@
-"""Variance head model + likelihood (Job 2). Twin of models.py, plus the loss role of
-training.py.
+"""Variance head models (Job 2). Twin of models.py.
 
-STRAIGHT prediction space (mm/day). The mean predicts streamflow straight and this head
+Heads ONLY. The NLL losses live in mve_training (matching training.py, which defines
+BasinAveragedNSELoss / MaskedMSELoss there); this file holds the head nn.Modules and the
+distribution math they own.
+
+STRAIGHT prediction space (mm/day). The mean predicts streamflow straight and each head
 models the STRAIGHT-space standardized residual. We do NOT log-transform streamflow;
 log space is a Branch-B ESCALATION, taken only if calibration (PIT) shows a tail-shape
 failure the straight-space head can't cover.
@@ -11,24 +14,20 @@ Consumes the (h, z) batches from mve_dataset:
   z : (B, 1)   standardized residual (y - mu_hat)/q_std, STRAIGHT space -- q_std is applied
                upstream, so nothing here touches q_std / y_true again.
 
-To implement:
-  1. VarianceHead(nn.Module)
-       __init__ : layer(s) 256 -> [var_hidden] -> 1. Linear (256 -> 1) is the start; add a
-                  hidden layer only if linear underfits the empirical binned residual
-                  variance (escalation ladder).
-       forward(h) -> the predicted SCALE (sigma > 0) of the straight-space residual z,
-                  via softplus for positivity; sigma is used directly by the NLL. (No statics
-                  passed -- they are already inside h. NOT a log-transform of streamflow.)
-  2. gaussian_nll(head_out, z) -> scalar
-       NLL of z under N(0, sigma^2) (sigma from head_out), meaned over the batch. Fit on
-       the val split; report on test.
+Heads:
+  1. VarianceHead   — symmetric Gaussian: forward(h) -> sigma > 0 (softplus). Paired with
+                      GaussianNLL (in mve_training).
+  2. SingleALDHead  — skew-aware asymmetric-Laplace (Branch B escalation): forward(h) ->
+                      (b > 0, tau in (0,1)). Paired with ALD_NLL (in mve_training). Drop-in
+                      swap for VarianceHead — fit_variance_head auto-selects its loss and
+                      mve_inference auto-detects it from the checkpoint. The head owns the ALD
+                      moment math (meanshift / var_factor); the loss consumes it.
 
-Escalation ONLY (not the default; gated on a PIT tail-failure): add a Student-t `nu`
-output (a separate parameter, not a transform of sigma), and/or move the target to log
-space (Branch B -> CMAL/UMAL).
+Escalation ladder: Linear -> add a hidden layer only if the linear head underfits;
+symmetric -> ALD if PIT shows a tail-shape failure; ALD -> CMAL/UMAL (mixture of ALDs)
+and/or a log-space target.
 """
 
-import math
 import torch
 import torch.nn as nn
 
@@ -55,30 +54,58 @@ class VarianceHead(nn.Module):
         sigma = self.softplus(raw)    # (B, 1), positive scale
         return sigma
 
-class GaussianNLL(nn.Module):
-    MODEL_TYPE = "GaussianNLL"
+class SingleALDHead(nn.Module):
+    """Skew-aware aleatoric head: frozen h -> (scale b>0, asymmetry tau in (0,1)).
 
-    def __init__(self, eps=1e-6, full=True):
+    Same freeze as VarianceHead: two LINEAR readouts of the frozen, mean-pooled h; the mean
+    model is never touched. Its loss (ALD_NLL, in mve_training) mean-recenters the ALD so
+    E[y]=mu_hat. The head OWNS the ALD moment math below, so the loss and mve_inference share
+    one definition.
+
+    Asymmetric-Laplace, quantile parameterization ALD(m, b, tau):
+        f(z) = (tau(1-tau)/b) * exp(-rho_tau((z-m)/b)),   rho_tau(u) = u*(tau - 1{u<0})
+        mean = m + b*(1-2tau)/(tau(1-tau));  var = b^2*(1-2tau+2tau^2)/(tau^2(1-tau)^2)
+    Mean-FROZEN => fix the location m = -b*meanshift(tau) so E[z]=0. Variance is
+    translation-invariant, so sigma_a^2 uses only (b, tau). tau<0.5 => fat UPPER tail
+    (matches the right-skewed streamflow residuals). meanshift / var_factor are pure
+    arithmetic, so they also run on numpy arrays (mve_inference calls them on grids).
+    """
+    MODEL_TYPE = "ALD"
+    TAU_MIN = 0.01                                   # keep tau off {0,1} for finite -log(tau(1-tau))
+
+    def __init__(self, hidden_dim=256):
         super().__init__()
-        self.eps = eps
-        self.full = full
+        self.scale = nn.Linear(hidden_dim, 1)        # -> softplus -> b > 0
+        self.asym = nn.Linear(hidden_dim, 1)         # -> squashed sigmoid -> tau in (TAU_MIN, 1-TAU_MIN)
+        self.softplus = nn.Softplus()
 
-    def forward(self, sigma, z):
-        """
-        sigma: (B, 1) positive scale straight from head + softplus
-        z:     (B, 1) standardized residual from dataset (may contain NaN)
-        """
-        # z carries NaN (mve_dataset passes all cells through). Mask and SELECT before the
-        # math so NaNs never enter the graph / poison gradients (mirrors BasinAveragedNSELoss).
-        mask = ~torch.isnan(z)
-        if mask.sum() == 0:
-            return torch.tensor(0.0, requires_grad=True, device=sigma.device)
+    def forward(self, h):
+        """h: (B, hidden_dim) frozen state. Returns (B, 2) = [b, tau]. b is the ALD scale of
+        the STRAIGHT-space standardized residual z; tau is the asymmetry (tau<0.5 = fat upper
+        tail). No log-transform; statics are already inside h (mirrors the mean head)."""
+        b = self.softplus(self.scale(h)) + 1e-6
+        tau = self.TAU_MIN + (1.0 - 2.0 * self.TAU_MIN) * torch.sigmoid(self.asym(h))
+        return torch.cat([b, tau], dim=-1)
 
-        s = sigma[mask] + self.eps        # select valid entries FIRST
-        zz = z[mask]
+    @staticmethod
+    def split(out):
+        """(B,2) head output -> (b, tau), each (B,1). Shared by ALD_NLL and inference."""
+        return out[..., 0:1], out[..., 1:2]
 
-        nll = torch.log(s) + 0.5 * (zz / s) ** 2
-        if self.full:                     # add the 2*pi constant only when reporting/comparing
-            nll = nll + 0.5 * math.log(2 * math.pi)
+    @staticmethod
+    def meanshift(tau):
+        """(E[z]-m)/b for the ALD; the loss fixes m = -b*meanshift(tau) so E[z]=0."""
+        return (1.0 - 2.0 * tau) / (tau * (1.0 - tau))
 
-        return torch.mean(nll)
+    @staticmethod
+    def var_factor(tau):
+        """Var(z) / b^2 for the ALD; sigma_a = b*sqrt(var_factor(tau))."""
+        return (1.0 - 2.0 * tau + 2.0 * tau ** 2) / (tau ** 2 * (1.0 - tau) ** 2)
+
+    @staticmethod
+    def aleatoric_sigma(out):
+        """std of the ALD (z-units) from the head output: b*sqrt(var_factor(tau)). Feeds the
+        sigma_a^2 + sigma_e^2 accounting; the location recenter does not affect it (variance
+        is translation-invariant)."""
+        b, tau = SingleALDHead.split(out)
+        return b * torch.sqrt(SingleALDHead.var_factor(tau))

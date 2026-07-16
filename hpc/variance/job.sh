@@ -45,7 +45,7 @@ python -m src.build_index --exp_name $EXP_NAME --model_type $MODEL_TYPE
 # 4. Step 1 — train the variance head off the frozen mean + hidden states, then emit the
 #    predictive variance grid (run_variance_head calls predict_and_save_variance at the end,
 #    writing data/output/results_MVE/variance/). Calibration is done afterwards in EXP7.
-echo "Starting Variance Head for Experiment: $EXP_NAME | Model: $MODEL_TYPE"
-python -u run_variance_head.py --exp_name $EXP_NAME --model_type $MODEL_TYPE
+echo "Starting Variance Head for Experiment: $EXP_NAME | Model: $MODEL_TYPE | Head: ${HEAD:-gaussian}"
+python -u run_variance_head.py --exp_name $EXP_NAME --model_type $MODEL_TYPE --head ${HEAD:-gaussian}
 
 echo "Job Finished."

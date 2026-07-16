@@ -13,11 +13,72 @@ loss (GaussianNLL, imported from mve_head, not defined here). fit_variance_head 
 epoch loop + early-stop + save (Job 1 keeps that in run_training.py).
 """
 import copy
+import math
 
 import torch
 from tqdm import tqdm
 
-from src.mve_head import GaussianNLL
+from src.mve_head import SingleALDHead
+
+
+# --- losses (defined here, matching training.py's BasinAveragedNSELoss / MaskedMSELoss) ----
+# Both mask NaN z with select-before-compute (mirrors BasinAveragedNSELoss) and return the
+# mean NLL over valid cells. The head emits the distribution's parameters; the loss scores z
+# under it. Swap the criterion to change the likelihood without touching the epoch loop.
+class GaussianNLL(torch.nn.Module):
+    MODEL_TYPE = "GaussianNLL"
+
+    def __init__(self, eps=1e-6, full=True):
+        super().__init__()
+        self.eps = eps
+        self.full = full
+
+    def forward(self, sigma, z):
+        """sigma: (B,1) positive scale from VarianceHead. z: (B,1) standardized residual (may be NaN)."""
+        # Mask and SELECT before the math so NaNs never enter the graph / poison gradients.
+        mask = ~torch.isnan(z)
+        if mask.sum() == 0:
+            return torch.tensor(0.0, requires_grad=True, device=sigma.device)
+
+        s = sigma[mask] + self.eps        # select valid entries FIRST
+        zz = z[mask]
+
+        nll = torch.log(s) + 0.5 * (zz / s) ** 2
+        if self.full:                     # add the 2*pi constant only when reporting/comparing
+            nll = nll + 0.5 * math.log(2 * math.pi)
+
+        return torch.mean(nll)
+
+
+class ALD_NLL(torch.nn.Module):
+    """Mean-preserving asymmetric-Laplace NLL on the standardized residual z, paired with
+    SingleALDHead. The location is fixed at m = -b*meanshift(tau) so E[z]=0 (predictive mean
+    == mu_hat: the byte-frozen mean is preserved even though the density is skewed). Same
+    NaN mask discipline as GaussianNLL. Algebraically this is scale-normalized pinball +
+    log b - log(tau(1-tau)):  NLL = rho_tau((z-m)/b) + log b - log(tau(1-tau))."""
+    MODEL_TYPE = "ALD_NLL"
+
+    def __init__(self, eps=1e-6, full=True):
+        super().__init__()
+        self.eps = eps
+        self.full = full                   # API parity w/ GaussianNLL; ALD normalizer is already exact
+
+    def forward(self, out, z):
+        """out: (B,2) = [b, tau] from SingleALDHead. z: (B,1) standardized residual (may be NaN)."""
+        b, tau = SingleALDHead.split(out)
+        mask = ~torch.isnan(z)
+        if mask.sum() == 0:
+            return torch.tensor(0.0, requires_grad=True, device=out.device)
+
+        b = b[mask] + self.eps             # select valid entries FIRST
+        tau = tau[mask]
+        zz = z[mask]
+
+        ms = SingleALDHead.meanshift(tau)  # location offset so E[z]=0 (m = -b*ms)
+        u = zz / b + ms                    # (z - m)/b
+        rho = u * (tau - (u < 0).float())  # pinball / check loss (asymmetric)
+        nll = rho + torch.log(b) - torch.log(tau * (1.0 - tau))
+        return torch.mean(nll)
 
 
 def _run_epoch(head, loader, device, criterion, optimizer=None):
@@ -77,8 +138,8 @@ def fit_variance_head(head, fit_loader, sel_loader, *, criterion=None, epochs=50
     """Train `head` on fit_loader, early-stop / select on sel_loader, keep the best state,
     optionally save it to save_path. Returns (head, history).
 
-    `criterion` defaults to GaussianNLL(); pass a Student-t NLL here later to swap the
-    likelihood without touching the loop (the Branch-B escalation).
+    `criterion` defaults by head type — ALD_NLL() for a SingleALDHead, else GaussianNLL();
+    pass one explicitly to override (e.g. a future CMAL/UMAL NLL) without touching the loop.
 
     Split discipline (chapter3.md): fit = val split, select = held-out slice of val (or
     k-fold within val); test is NEVER used to fit or select. save_path naming is set by the
@@ -86,7 +147,8 @@ def fit_variance_head(head, fit_loader, sel_loader, *, criterion=None, epochs=50
     """
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     head.to(device)
-    criterion = criterion or GaussianNLL()
+    if criterion is None:                  # auto-pick the matching likelihood for the head
+        criterion = ALD_NLL() if getattr(head, "MODEL_TYPE", "") == "ALD" else GaussianNLL()
     optimizer = torch.optim.Adam(head.parameters(), lr=lr)
 
     history = {"fit_nll": [], "sel_nll": []}

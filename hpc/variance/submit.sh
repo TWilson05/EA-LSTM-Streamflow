@@ -13,6 +13,7 @@ fi
 
 EXP_NAME=$1
 MODEL_TYPE=$2
+HEAD=${3:-gaussian}         # optional 3rd arg: gaussian (default) | ald
 
 # 1. Load Secrets
 if [ -f "secrets.env" ]; then
@@ -37,5 +38,5 @@ echo "Submitting variance-head job for experiment: $EXP_NAME and model: $MODEL_T
 sbatch \
     --account=$ACCOUNT \
     --mail-user=$EMAIL \
-    --export=ALL,EXP_NAME=$EXP_NAME,MODEL_TYPE=$MODEL_TYPE \
+    --export=ALL,EXP_NAME=$EXP_NAME,MODEL_TYPE=$MODEL_TYPE,HEAD=$HEAD \
     hpc/variance/job.sh
