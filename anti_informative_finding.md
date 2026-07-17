@@ -54,3 +54,13 @@ On a frozen mean streamflow predictor + deep ensemble, with a post-hoc variance 
 ## 7. One-line reminder to future me
 
 I am NOT claiming a novel mechanism (ensembles-are-crude is textbook). I AM claiming a demonstrated operational consequence (now, applied venues) and — pending §3 — a failure regime distinct from Wilson–Izmailov (later, foundational venues, with a methods co-author). Cite the mechanism; prove the consequence; extend the taxonomy, don't refute it.
+
+
+### Note 
+"§3 vulnerability is now sharper — must distinguish 'non-informative under shift' from the documented 'epistemic uncertainty hole' (Fellaji/Kirchhof/Bengs), not just from Wilson-Izmailov. Cite this literature as grounding for the HESS motivation; engage it as the competitive frontier for the EIML/AABI claim."
+
+Read:
+Kirchhof et al. 2025 (definitions mutually inconsistent, estimators correlate), 
+Fellaji & Pennerath 2024 (epistemic collapse with model size — the "epistemic uncertainty hole"), 
+Bengs et al. 2022 (identifiability pathologies in second-order/evidential methods), and the 
+Sale et al. 2024 variance-based-decomposition line. 
